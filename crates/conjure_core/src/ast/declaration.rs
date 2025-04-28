@@ -1,14 +1,14 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use derivative::Derivative;
-use serde::{Deserialize, Serialize};
-use uniplate::derive::Uniplate;
-use uniplate::{Biplate, Tree};
-
 use super::name::Name;
 use super::serde::{DefaultWithId, HasId, ObjId};
 use super::types::Typeable;
 use super::{DecisionVariable, Domain, Expression, ReturnType};
+use conjure_core::ast::comprehension::Generator;
+use derivative::Derivative;
+use serde::{Deserialize, Serialize};
+use uniplate::derive::Uniplate;
+use uniplate::{Biplate, Tree};
 
 static ID_COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -49,6 +49,7 @@ pub enum DeclarationKind {
     DecisionVariable(DecisionVariable),
     ValueLetting(Expression),
     DomainLetting(Domain),
+    Quantified(Generator),
 }
 
 impl Declaration {
@@ -64,6 +65,15 @@ impl Declaration {
         Declaration {
             name,
             kind: DeclarationKind::DecisionVariable(DecisionVariable::new(domain)),
+            id,
+        }
+    }
+
+    pub fn new_quantified(name: Name, generator: Generator) -> Declaration {
+        let id = ID_COUNTER.fetch_add(1, Ordering::Relaxed);
+        Declaration {
+            name,
+            kind: DeclarationKind::Quantified(generator),
             id,
         }
     }
@@ -105,6 +115,7 @@ impl Declaration {
             // TODO: this needs a symbol table :(
             DeclarationKind::ValueLetting(_) => None,
             DeclarationKind::DomainLetting(domain) => Some(domain),
+            DeclarationKind::Quantified(_) => None,
         }
     }
 
@@ -161,6 +172,14 @@ impl Declaration {
             None
         }
     }
+
+    pub fn as_generator(&self) -> Option<&Generator> {
+        if let DeclarationKind::Quantified(gen) = &self.kind {
+            Some(gen)
+        } else {
+            None
+        }
+    }
 }
 
 impl HasId for Declaration {
@@ -195,6 +214,7 @@ impl Typeable for Declaration {
             DeclarationKind::DecisionVariable(var) => var.return_type(),
             DeclarationKind::ValueLetting(expression) => expression.return_type(),
             DeclarationKind::DomainLetting(domain) => domain.return_type(),
+            DeclarationKind::Quantified(_) => None,
         }
     }
 }
