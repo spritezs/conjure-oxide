@@ -144,6 +144,9 @@ pub enum Expression {
     Union(Metadata, Box<Expression>, Box<Expression>),
 
     #[compatible(JsonInput)]
+    In(Metadata, Box<Expression>, Box<Expression>),
+
+    #[compatible(JsonInput)]
     Intersect(Metadata, Box<Expression>, Box<Expression>),
 
     #[compatible(JsonInput)]
@@ -468,6 +471,7 @@ impl Expression {
                 SetAttr::None,
                 Box::new(a.domain_of(syms)?.union(&b.domain_of(syms)?)?),
             )),
+            Expression::In(_, _, _) => Some(Domain::BoolDomain),
             Expression::Intersect(_, a, b) => Some(Domain::DomainSet(
                 SetAttr::None,
                 Box::new(a.domain_of(syms)?.intersect(&b.domain_of(syms)?)?),
@@ -858,6 +862,9 @@ impl Display for Expression {
             Expression::Union(_, box1, box2) => {
                 write!(f, "({} union {})", box1.clone(), box2.clone())
             }
+            Expression::In(_, e1, e2) => {
+                write!(f, "{} in {}", e1, e2)
+            }
             Expression::Intersect(_, box1, box2) => {
                 write!(f, "({} intersect {})", box1.clone(), box2.clone())
             }
@@ -1076,6 +1083,7 @@ impl Typeable for Expression {
             Expression::Union(_, subject, _) => {
                 Some(ReturnType::Set(Box::new(subject.return_type()?)))
             }
+            Expression::In(_, _, _) => Some(ReturnType::Bool),
             Expression::Intersect(_, subject, _) => {
                 Some(ReturnType::Set(Box::new(subject.return_type()?)))
             }
