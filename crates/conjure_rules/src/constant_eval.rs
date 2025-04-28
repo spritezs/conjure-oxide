@@ -32,36 +32,6 @@ pub fn eval_constant(expr: &Expr) -> Option<Lit> {
     match expr {
         // TODO: need to specify for subsetEq etc + intersection + union
         Expr::Union(_, _, _) => None,
-        Expr::In(_, a, b) => match (a.as_ref(), b.as_ref()) {
-            (
-                Expr::Atomic(_, Atom::Literal(Lit::Int(c))),
-                Expr::AbstractLiteral(_, AbstractLiteral::Set(d)),
-            ) => {
-                for lit in d.iter() {
-                    if let Expr::Atomic(_, Atom::Literal(Lit::Int(x))) = lit {
-                        if c == x {
-                            return Some(Lit::Bool(true));
-                        }
-                    }
-                }
-                Some(Lit::Bool(false))
-            }
-
-            (
-                Expr::Atomic(_, Atom::Literal(Lit::Int(c))),
-                Expr::Atomic(_, Atom::Literal(Lit::AbstractLiteral(AbstractLiteral::Set(d)))),
-            ) => {
-                for lit in d.iter() {
-                    if let Lit::Int(x) = lit {
-                        if c == x {
-                            return Some(Lit::Bool(true));
-                        }
-                    }
-                }
-                Some(Lit::Bool(false))
-            }
-            _ => None,
-        },
         Expr::Intersect(_, _, _) => None,
         Expr::Supset(_, _, _) => None,
         Expr::SupsetEq(_, _, _) => None,
@@ -350,7 +320,6 @@ pub fn eval_constant(expr: &Expr) -> Option<Lit> {
             Some(Lit::Bool(a ^ b == c))
         }
         Expr::MinionWInIntervalSet(_, _, _) => None,
-        Expr::MinionWInSet(_, _, _) => None,
         Expr::AllDiff(_, e) => {
             let es = e.clone().unwrap_list()?;
             let mut lits: HashSet<Lit> = HashSet::new();
