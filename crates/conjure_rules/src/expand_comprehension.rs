@@ -1,5 +1,5 @@
 use conjure_core::{
-    ast::{DeclarationKind, Expression as Expr, SymbolTable},
+    ast::{Expression as Expr, SymbolTable},
     into_matrix_expr,
     rule_engine::{
         register_rule, ApplicationError::RuleNotApplicable, ApplicationResult, Reduction,
@@ -13,12 +13,6 @@ fn expand_comprehension(expr: &Expr, _: &SymbolTable) -> ApplicationResult {
     };
 
     // TODO: check what kind of error this throws and maybe panic
-
-    for var in comprehension.submodel().symbols().clone().into_iter_local() {
-        if let DeclarationKind::Quantified(_) = var.1.kind() {
-            return Err(RuleNotApplicable);
-        }
-    }
 
     let results = comprehension
         .as_ref()

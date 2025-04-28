@@ -2,7 +2,7 @@ use super::{
     comprehension::Comprehension,
     declaration::DeclarationKind,
     pretty::{
-        pretty_domain_letting_declaration, pretty_expressions_as_top_level, pretty_quantified,
+        pretty_domain_letting_declaration, pretty_expressions_as_top_level,
         pretty_value_letting_declaration, pretty_variable_declaration,
     },
     serde::RcRefCellAsInner,
@@ -178,9 +178,6 @@ impl Display for SubModel {
                         "{}",
                         pretty_domain_letting_declaration(&self.symbols(), &name).unwrap()
                     )?;
-                }
-                DeclarationKind::Quantified(_) => {
-                    writeln!(f, "{}", pretty_quantified(&self.symbols(), &name).unwrap())?;
                 }
             }
         }

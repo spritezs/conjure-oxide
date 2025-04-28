@@ -7,7 +7,7 @@ use std::fmt::Display;
 
 use itertools::Itertools;
 
-use super::{comprehension::Generator, Expression, Name, SymbolTable};
+use super::{Expression, Name, SymbolTable};
 
 /// Pretty prints a `Vec<Expression>` as if it were a top level constraint list in a `such that`.
 ///
@@ -23,15 +23,6 @@ use super::{comprehension::Generator, Expression, Name, SymbolTable};
 /// Each `Expression` is printed using its underlying `Display` implementation.
 pub fn pretty_expressions_as_top_level(expressions: &[Expression]) -> String {
     expressions.iter().map(|x| format!("{}", x)).join(",\n")
-}
-
-pub fn pretty_quantified(symbol_table: &SymbolTable, name: &Name) -> Option<String> {
-    let decl = symbol_table.lookup(name)?;
-    let gen = decl.as_generator()?;
-    match gen {
-        Generator::WithDomain(domain) => Some(format!("{name}: {domain}")),
-        Generator::InExpr(expr) => Some(format!("{name} <- {expr}")),
-    }
 }
 
 /// Pretty prints a `Vec<Expression>` as if it were a conjunction.
