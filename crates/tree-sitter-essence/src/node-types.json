@@ -289,6 +289,21 @@
     }
   },
   {
+    "type": "incomparability_function",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "expression",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "int_domain",
     "named": true,
     "fields": {},
@@ -464,6 +479,10 @@
         },
         {
           "type": "find_statement_list",
+          "named": true
+        },
+        {
+          "type": "incomparability_function",
           "named": true
         },
         {
@@ -680,6 +699,10 @@
   },
   {
     "type": "fromSolution",
+    "named": false
+  },
+  {
+    "type": "incomparabilityFunction",
     "named": false
   },
   {

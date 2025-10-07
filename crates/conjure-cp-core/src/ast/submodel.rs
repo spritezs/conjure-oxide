@@ -150,6 +150,12 @@ impl SubModel {
         self.constraints_mut().extend(constraints);
     }
 
+    /// Removes a top-level constraint.
+    pub fn remove_constraint(&mut self, constraint: Expression) {
+        self.constraints_mut().retain(|x| *x != constraint);
+    }
+
+
     /// Adds a new symbol to the symbol table
     /// (Wrapper over `SymbolTable.insert`)
     pub fn add_symbol(&mut self, decl: DeclarationPtr) -> Option<()> {

@@ -90,6 +90,9 @@ pub enum Expression {
     /// `fromSolution(name)` - Used in dominance relation definitions
     FromSolution(Metadata, Moo<Expression>),
 
+    // Defines the incomparability function used for CDP+I
+    IncomparabilityFunction(Metadata, Moo<Expression>),
+
     Atomic(Metadata, Atom),
 
     /// A matrix index.
@@ -587,6 +590,7 @@ impl Expression {
             Expression::AbstractLiteral(_, abslit) => abslit.domain_of(),
             Expression::DominanceRelation(_, _) => Some(Domain::Bool),
             Expression::FromSolution(_, expr) => expr.domain_of(),
+            Expression::IncomparabilityFunction(_, expr) => expr.domain_of(),
             Expression::Comprehension(_, comprehension) => comprehension.domain_of(),
             Expression::UnsafeIndex(_, matrix, _) | Expression::SafeIndex(_, matrix, _) => {
                 match matrix.domain_of()? {
@@ -1109,6 +1113,7 @@ impl Display for Expression {
             }
             Expression::DominanceRelation(_, expr) => write!(f, "DominanceRelation({expr})"),
             Expression::FromSolution(_, expr) => write!(f, "FromSolution({expr})"),
+            Expression::IncomparabilityFunction(_, expr) => write!(f, "IncomparabilityFunction({expr})"),
             Expression::Atomic(_, atom) => atom.fmt(f),
             Expression::Scope(_, submodel) => write!(f, "{{\n{submodel}\n}}"),
             Expression::Abs(_, a) => write!(f, "|{a}|"),
@@ -1325,6 +1330,7 @@ impl Typeable for Expression {
             Expression::Root(_, _) => Some(ReturnType::Bool),
             Expression::DominanceRelation(_, _) => Some(ReturnType::Bool),
             Expression::FromSolution(_, expr) => expr.return_type(),
+            Expression::IncomparabilityFunction(_, expr) => expr.return_type(),
             Expression::Atomic(_, atom) => atom.return_type(),
             Expression::Scope(_, scope) => scope.return_type(),
             Expression::Abs(_, _) => Some(ReturnType::Int),

@@ -30,6 +30,7 @@ pub struct Model {
     submodel: SubModel,
     pub search_order: Option<Vec<Name>>,
     pub dominance: Option<Expression>,
+    pub incomparability_fct: Option<Expression>,
     #[derivative(PartialEq = "ignore")]
     pub context: Arc<RwLock<Context<'static>>>,
 }
@@ -48,6 +49,18 @@ impl Model {
         submodel.add_constraint(constraint);
     }
 
+    pub fn add_constraints(&mut self, constraint: Vec<Expression>) 
+    {
+        let submodel = self.as_submodel_mut();
+        submodel.add_constraints(constraint);
+    }
+
+    pub fn remove_constraint(&mut self, constraint: Expression) 
+    {
+        let submodel = self.as_submodel_mut();
+        submodel.remove_constraint(constraint);
+    }
+
     pub fn from_submodel(submodel: SubModel) -> Model {
         Model {
             submodel,
@@ -60,6 +73,7 @@ impl Model {
         Model {
             submodel: SubModel::new_top_level(),
             dominance: None,
+            incomparability_fct: None,
             context,
             search_order: None,
         }
@@ -86,6 +100,7 @@ impl Default for Model {
         Model {
             submodel: SubModel::new_top_level(),
             dominance: None,
+            incomparability_fct: None,
             context: Arc::new(RwLock::new(Context::default())),
             search_order: None,
         }
@@ -119,16 +134,24 @@ impl Biplate<Expression> for Model {
             Some(expr) => Tree::One(expr.clone()),
             None => Tree::Zero,
         };
-        let tree = Tree::<Expression>::Many(VecDeque::from([expr_tree, dom_tree]));
+       
+        // walk into incomparability function if it exists
+        let incomp_tree = match &self.incomparability_fct {
+            Some(expr) => Tree::One(expr.clone()),
+            None => Tree::Zero,
+        };
+
+        let tree = Tree::<Expression>::Many(VecDeque::from([expr_tree, dom_tree, incomp_tree]));
 
         let self2 = self.clone();
         let ctx = Box::new(move |x| match x {
             Tree::Many(xs) => {
-                if xs.len() != 2 {
-                    panic!("Expected a tree with two children");
+                if xs.len() != 3 {
+                    panic!("Expected a tree with three children");
                 }
                 let submodel_tree = xs[0].clone();
                 let dom_tree = xs[1].clone();
+                let incomp_tree = xs[2].clone();
 
                 // reconstruct the submodel
                 let submodel = expr_ctx(submodel_tree);
@@ -138,14 +161,21 @@ impl Biplate<Expression> for Model {
                     Tree::Zero => None,
                     _ => panic!("Expected a tree with two children"),
                 };
+                // reconstruct the incomparability function
+                let incomparability_fct = match incomp_tree {
+                    Tree::One(expr) => Some(expr),
+                    Tree::Zero => None,
+                    _ => panic!("Expected a tree with three children"),
+                };
 
                 let mut self3 = self2.clone();
                 self3.replace_submodel(submodel);
                 self3.dominance = dominance;
+                self3.incomparability_fct = incomparability_fct;
                 self3
             }
             _ => {
-                panic!("Expected a tree with two children");
+                panic!("Expected a tree with three children");
             }
         });
 
@@ -189,6 +219,7 @@ pub struct SerdeModel {
     submodel: SubModel,
     search_order: Option<Vec<Name>>, // TODO: make this a [expressions]
     dominance: Option<Expression>,
+    incomparability_fct: Option<Expression>
 }
 
 impl SerdeModel {
@@ -254,6 +285,7 @@ impl SerdeModel {
         Some(Model {
             submodel: self.submodel,
             dominance: self.dominance,
+            incomparability_fct: self.incomparability_fct,
             context,
             search_order: self.search_order,
         })
@@ -265,6 +297,7 @@ impl From<Model> for SerdeModel {
         SerdeModel {
             submodel: val.submodel,
             dominance: val.dominance,
+            incomparability_fct: val.incomparability_fct,
             search_order: val.search_order,
         }
     }

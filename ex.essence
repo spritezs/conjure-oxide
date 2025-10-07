@@ -12,3 +12,7 @@ dominanceRelation (
     )
 )
 
+ $ incomparabilityFunction (
+ $      cost+carbon
+ $ )
+   

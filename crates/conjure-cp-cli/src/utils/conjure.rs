@@ -45,6 +45,73 @@ pub fn get_minion_solutions(
 }
 
 pub fn get_minion_solutions_dominance(
+    model: Model,
+    num_sols: i32,
+    solver_input_file: &Option<PathBuf>,
+    dominance_rel: Expression
+) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
+
+    if let Some(Expression::IncomparabilityFunction(_, inner_expr)) = model.incomparability_fct.clone()  
+    {
+        return get_minion_solutions_dominance_with_incomparability(model, num_sols, solver_input_file, dominance_rel.clone(), (*inner_expr).clone());
+    }
+    else
+    {
+        return get_minion_solutions_dominance_no_incomparability(model, num_sols, solver_input_file, dominance_rel);
+    }
+}
+
+pub fn get_minion_solutions_dominance_with_incomparability(
+    mut model: Model,
+    // TODO: after filtering only keep `num_sols` solutions
+    _num_sols: i32,
+    solver_input_file: &Option<PathBuf>,
+    dominance_expression: Expression,
+    incomparability_fct: Expression
+) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
+
+    let mut results = Vec::new();
+
+    // let levels = get_levels(incomparability_fct);
+
+    let expr = Expression::Atomic(Metadata::new(), Atom::Literal(Literal::Int(1)));
+    // for level in levels{
+
+        // add level constraint
+        model.add_constraint(expr.clone());
+
+        // run model
+        let solutions = get_minion_solutions_no_dominance(model.clone(), -1, solver_input_file)?;
+
+        // save sols in results
+        results.extend(solutions.clone());
+        
+        // add blocking constraints
+        for solution in solutions{
+            if let Some(blocking_constraint) = crate_blocking_constraint_from_solution(&dominance_expression, &solution) {
+                model.add_constraint(blocking_constraint);
+            }
+        }
+       
+        // remove level constraint
+        model.remove_constraint(expr);
+        
+
+        let model_copy = model.clone();
+
+        // rewrite model (TODO: optimize to avoid full rewrite?)
+        // let rule_sets = model.context.read().unwrap().rule_sets.clone();
+        // model = rewrite_naive(&model, &rule_sets, false, false)?;
+
+    
+    // }
+
+    Ok(results)
+}
+
+
+
+pub fn get_minion_solutions_dominance_no_incomparability(
     mut model: Model,
     // TODO: after filtering only keep `num_sols` solutions
     _num_sols: i32,
@@ -55,6 +122,7 @@ pub fn get_minion_solutions_dominance(
     // All non-dominated solutions
     let mut results = Vec::new();
 
+    let expr = Expression::Atomic(Metadata::new(), Atom::Literal(Literal::Int(1)));
     loop {
         // Get the next solution
         let solutions = get_minion_solutions_no_dominance(model.clone(), 1, solver_input_file)?;
@@ -68,13 +136,22 @@ pub fn get_minion_solutions_dominance(
         results.extend(solutions.clone());
 
         // Create and apply new blocking constraint
-        if let Some(blocking_constraint) = crate_blocking_constraint_from_solution(&dominance_expression, &solution) {
-            model.add_constraint(blocking_constraint);
+        let mut model_copy = model.clone();
+        let constraints: Vec<Expression> = model_copy.as_submodel().constraints().into_iter().cloned().collect();
+
+        for constraint in constraints {
+            model_copy.remove_constraint(constraint.clone());
         }
 
-        // Rewrite model (TODO: optimize to avoid full rewrite?)
+        if let Some(blocking_constraint) = crate_blocking_constraint_from_solution(&dominance_expression, &solution) {
+            model_copy.add_constraint(blocking_constraint);
+        }
+
+        // Rewrite model
+        println!("{}",model_copy);
         let rule_sets = model.context.read().unwrap().rule_sets.clone();
-        model = rewrite_naive(&model, &rule_sets, false, false)?;
+        model_copy = rewrite_naive(&model_copy, &rule_sets, false, false)?;
+        model.add_constraints(model_copy.as_submodel().constraints().clone());
 
         // For debugging
         println!("{}", model);
@@ -82,6 +159,15 @@ pub fn get_minion_solutions_dominance(
 
     Ok(results)
 }
+
+// pub fn crate_level_constraint_from_incomp_fct(
+//     expr: &Expression,
+//     level: i32
+// ) -> Option<Expression> {
+
+    
+// }
+
 
 pub fn crate_blocking_constraint_from_solution(
     expr: &Expression,

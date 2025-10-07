@@ -22,6 +22,10 @@
           {
             "type": "SYMBOL",
             "name": "dominance_relation"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "incomparability_function"
           }
         ]
       }
@@ -906,6 +910,19 @@
         {
           "type": "STRING",
           "value": "dominanceRelation"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "expression"
+        }
+      ]
+    },
+    "incomparability_function": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "incomparabilityFunction"
         },
         {
           "type": "SYMBOL",
