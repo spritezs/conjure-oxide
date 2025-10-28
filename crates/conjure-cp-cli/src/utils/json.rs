@@ -62,18 +62,18 @@ pub fn sort_json_object(value: &Value, sort_arrays: bool) -> Value {
             ordered.sort_by(|a, b| a.0.cmp(&b.0));
             Value::Object(ordered.into_iter().collect())
         }
-        Value::Array(arr) => {
-            let mut arr: Vec<Value> = arr
-                .iter()
-                .map(|val| sort_json_object(val, sort_arrays))
-                .collect();
+        // Value::Array(arr) => {
+        //     let mut arr: Vec<Value> = arr
+        //         .iter()
+        //         .map(|val| sort_json_object(val, sort_arrays))
+        //         .collect();
 
-            if sort_arrays {
-                arr.sort_by(json_value_cmp);
-            }
+        //     if sort_arrays {
+        //         arr.sort_by(json_value_cmp);
+        //     }
 
-            Value::Array(arr)
-        }
+        //     Value::Array(arr)
+        // }
         _ => value.clone(),
     }
 }

@@ -250,6 +250,12 @@ impl ComprehensionBuilder {
 
         // handle guards that reference non-induction variables
         if !other_guards.is_empty() {
+
+            // let comprehension_kind = comprehension_kind.unwrap_or_else(|| {
+            //     eprintln!("Using default comprehension kind");
+            //     ACOperatorKind::And // Replace with your actual default
+            // });
+
             let comprehension_kind = comprehension_kind.expect(
                 "if any guards reference decision variables, a comprehension kind should be given",
             );
