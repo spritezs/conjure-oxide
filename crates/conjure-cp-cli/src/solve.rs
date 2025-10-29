@@ -25,6 +25,7 @@ use conjure_cp::{parse::tree_sitter::parse_essence_file_native, solver::adaptors
 use conjure_cp_cli::find_conjure::conjure_executable;
 use conjure_cp_cli::utils::conjure::{get_solutions, solutions_to_json};
 use serde_json::to_string_pretty;
+use std::fs;
 
 use crate::cli::{GlobalArgs, LOGGING_HELP_HEADING};
 
@@ -263,6 +264,15 @@ fn run_solver(
                 .open(pth)?,
         ),
     };
+
+    let dom_file = "dom_rel.essence";
+    if fs::read_dir(".")?.any(|entry| entry.as_ref().map(|e| e.file_name() == dom_file).unwrap_or(false)) {
+        println!("Dom Rel file '{}' found!", dom_file);
+        let context = init_context(&global_args, dom_file.into())?;
+        let dom_model = parse(&global_args, Arc::clone(&context))?;
+        println!("{}",dom_model.as_submodel().constraints());
+    }
+
 
     let solutions = get_solutions(
         adaptor,

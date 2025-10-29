@@ -37,6 +37,7 @@ pub(super) fn run_partial_evaluator(expr: &Expr, symtab: &SymbolTable) -> Applic
         Expr::UnsafeIndex(_, _, _) => Err(RuleNotApplicable),
         Expr::UnsafeSlice(_, _, _) => Err(RuleNotApplicable),
         Expr::SafeIndex(_, subject, indices) => {
+
             // partially evaluate matrix literals indexed by a constant.
 
             // subject must be a matrix literal
@@ -54,6 +55,10 @@ pub(super) fn run_partial_evaluator(expr: &Expr, symtab: &SymbolTable) -> Applic
 
             // the index must be a number
             let index: i32 = (&indices[0]).try_into().map_err(|_| RuleNotApplicable)?;
+
+            if index > 16 as i32 {
+                return Err(RuleNotApplicable);
+            }
 
             // index domain must be a single integer range with a lower bound
             if let Domain::Int(ranges) = index_domain
