@@ -21,7 +21,11 @@ find rel_RelationAsMatrix: matrix indexed by [int(1..n), int(1..n)] of int(0..1)
 find fromSol: matrix indexed by [int(1..n), int(1..n)] of int(0..1)
 
 such that 
-exists i: int(1..n) .
+((exists i: int(1..n) .
 exists j: int(1..n) .
-rel_RelationAsMatrix[i,j]!=fromSol[i,j]
+rel_RelationAsMatrix[i,j]!=fromSol[i,j]) /\ 
+
+(forAll i: int(1..n).
+forAll j:int(1..n).
+    rel_RelationAsMatrix[i,j]=1 -> fromSol[i,j]=1))
 
