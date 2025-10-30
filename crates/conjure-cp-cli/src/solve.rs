@@ -11,17 +11,17 @@ use std::{
 use anyhow::{anyhow, ensure};
 use clap::ValueHint;
 use conjure_cp::defaults::DEFAULT_RULE_SETS;
+use conjure_cp::parse::tree_sitter::parse_essence_file_native;
 use conjure_cp::{
     Model,
     ast::comprehension::USE_OPTIMISED_REWRITER_FOR_COMPREHENSIONS,
     context::Context,
     rule_engine::{resolve_rule_sets, rewrite_morph, rewrite_naive},
-    solver::{Solver, SolverAdaptor, adaptors},
+    solver::{Solver, adaptors},
 };
 use conjure_cp::{
     parse::conjure_json::model_from_json, rule_engine::get_rules, solver::SolverFamily,
 };
-use conjure_cp::{parse::tree_sitter::parse_essence_file_native, solver::adaptors::*};
 use conjure_cp_cli::find_conjure::conjure_executable;
 use conjure_cp_cli::utils::conjure::{get_solutions, solutions_to_json};
 use serde_json::to_string_pretty;
@@ -63,6 +63,7 @@ pub fn run_solve_command(global_args: GlobalArgs, solve_args: Args) -> anyhow::R
 
     let context = init_context(&global_args, input_file)?;
     let model = parse(&global_args, Arc::clone(&context))?;
+
     let rewritten_model = rewrite(model, &global_args, Arc::clone(&context))?;
 
     if solve_args.no_run_solver {
@@ -93,20 +94,12 @@ pub fn run_solve_command(global_args: GlobalArgs, solve_args: Args) -> anyhow::R
             };
         }
     } else {
-        match global_args.solver {
-            SolverFamily::Sat => {
-                let adaptor = Sat::default();
-                run_solver(adaptor, &global_args, &solve_args, rewritten_model)
-            }
-            SolverFamily::Smt => {
-                let adaptor = Smt::default();
-                run_solver(adaptor, &global_args, &solve_args, rewritten_model)
-            }
-            SolverFamily::Minion => {
-                let adaptor = Minion::default();
-                run_solver(adaptor, &global_args, &solve_args, rewritten_model)
-            }
-        }?;
+        run_solver(
+            global_args.solver,
+            &global_args,
+            &solve_args,
+            rewritten_model,
+        )?
     }
 
     // still do postamble even if we didn't run the solver
@@ -249,10 +242,10 @@ pub(crate) fn rewrite(
 }
 
 fn run_solver(
-    adaptor: impl SolverAdaptor,
+    solver: SolverFamily,
     global_args: &GlobalArgs,
     cmd_args: &Args,
-    model: Model,
+    mut model: Model,
 ) -> anyhow::Result<()> {
     let out_file: Option<File> = match &cmd_args.output {
         None => None,
@@ -270,12 +263,11 @@ fn run_solver(
         println!("Dom Rel file '{}' found!", dom_file);
         let context = init_context(&global_args, dom_file.into())?;
         let dom_model = parse(&global_args, Arc::clone(&context))?;
-        println!("{}",dom_model.as_submodel().constraints());
+        model.dominance = dom_model.dominance;
     }
 
-
     let solutions = get_solutions(
-        adaptor,
+        solver,
         model,
         cmd_args.number_of_solutions,
         &global_args.save_solver_input_file,
