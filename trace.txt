@@ -1,0 +1,78 @@
+Model before rewriting:
+
+find a: matrix indexed by [[int(1..5), int(1..1)]] of int(0..1)
+
+such that
+
+(a = [[1;int(1..1)],[1;int(1..1)],[1;int(1..1)],[1;int(1..1)],[1;int(1..1)];int(1..5)])
+
+--
+
+(a = [[1;int(1..1)],[1;int(1..1)],[1;int(1..1)],[1;int(1..1)],[1;int(1..1)];int(1..5)]), 
+   ~~> eq_to_compr ([("Base", 8002)]) 
+and([given __0: int(1..5)
+given __1: int(1)
+
+such that
+
+(a[__0, __1] = [[1;int(1..1)],[1;int(1..1)],[1;int(1..1)],[1;int(1..1)],[1;int(1..1)];int(1..5)][__0, __1])
+ | __0: int(1..5),__1: int(1),]) 
+
+--
+
+and([given __0: int(1..5)
+given __1: int(1)
+
+such that
+
+(a#matrix_to_atom[__0, __1] = [[1;int(1..1)],[1;int(1..1)],[1;int(1..1)],[1;int(1..1)],[1;int(1..1)];int(1..5)][__0, __1])
+ | __0: int(1..5),__1: int(1),]), 
+   ~~> select_representation_matrix ([("Base", 8001)]) 
+and([given __0: int(1..5)
+given __1: int(1)
+
+such that
+
+(a#matrix_to_atom[__0, __1] = [[1;int(1..1)],[1;int(1..1)],[1;int(1..1)],[1;int(1..1)],[1;int(1..1)];int(1..5)][__0, __1])
+ | __0: int(1..5),__1: int(1),]) 
+new variables:
+  find a#matrix_to_atom_1_1: int(0..1)
+  find a#matrix_to_atom_2_1: int(0..1)
+  find a#matrix_to_atom_3_1: int(0..1)
+  find a#matrix_to_atom_4_1: int(0..1)
+  find a#matrix_to_atom_5_1: int(0..1)
+--
+
+Model before rewriting:
+
+find __0: int(1..5)
+find __1: int(1)
+find __2: bool
+
+such that
+
+(true != __2)
+
+--
+
+Final model:
+
+find __0: int(1..5)
+find __1: int(1)
+find __2: bool
+
+such that
+
+(true != __2)
+
+Model before rewriting:
+
+given __0: int(1..5)
+given __1: int(1)
+
+such that
+
+(a#matrix_to_atom[__0, __1] = [[1;int(1..1)],[1;int(1..1)],[1;int(1..1)],[1;int(1..1)],[1;int(1..1)];int(1..5)][__0, __1])
+
+--
+

@@ -166,9 +166,12 @@ impl Representation for MatrixToAtom {
         &self,
         symtab: &SymbolTable,
     ) -> Result<BTreeMap<Name, Expression>, ApplicationError> {
+
+        println!("{:?}",symtab);
         Ok(self
             .names()
             .map(|name| {
+                // println!("{:?}",name);
                 let declaration = symtab.lookup(&name).expect("declarations of the representation variables should exist in the symbol table before expression_down is called");
                 (name, declaration)
             })

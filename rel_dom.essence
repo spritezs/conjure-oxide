@@ -1,0 +1,5 @@
+find a: matrix indexed by [int(1..5),int(1..1)] of int(0..1)
+such that
+
+forAll i: int(1..5) .
+a[i,1]>fromSol(a)[i,1]

@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 use std::process::exit;
 use std::sync::Arc;
-
+use conjure_cp::solver::adaptors::Sat;
 use clap::ValueHint;
 use conjure_cp_cli::utils::conjure::{
-    get_solutions, get_solutions_from_conjure, solutions_to_json,
+    get_solutions_from_conjure, solutions_to_json, get_solutions_no_dominance,
 };
 use conjure_cp_cli::utils::testing::normalize_solutions_for_comparison;
 
@@ -27,9 +27,10 @@ pub fn run_test_solve_command(global_args: GlobalArgs, local_args: Args) -> anyh
     let rewritten_model = solve::rewrite(model, &global_args, Arc::clone(&context))?;
 
     // now we are stealing from the integration tester
-
-    let our_solutions = get_solutions(
-        global_args.solver,
+    //TODO: For now no dominanace
+    // TOOD: fix this TUdor
+    let our_solutions = get_solutions_no_dominance(
+        Sat::default(),
         rewritten_model,
         0,
         &global_args.save_solver_input_file,

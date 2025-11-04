@@ -27,5 +27,5 @@ rel_RelationAsMatrix[i,j]!=fromSol[i,j]) /\
 
 (forAll i: int(1..n).
 forAll j:int(1..n).
-    rel_RelationAsMatrix[i,j]=1 -> fromSol[i,j]=1))
+    rel_RelationAsMatrix[i,j]=1 -> fromSol[i,j]=1)) \/ score<fromSol
 

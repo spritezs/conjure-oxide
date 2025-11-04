@@ -77,3 +77,40 @@ pub fn sort_json_object(value: &Value, sort_arrays: bool) -> Value {
         _ => value.clone(),
     }
 }
+
+
+use serde_json::Error;
+use conjure_cp::ast::{AbstractLiteral, Literal, Range, Name};
+use std::collections::BTreeMap;
+pub fn extract_matrix(data: &Literal) -> String {
+    // Initialize the result string
+    let mut result = String::new();
+    use uniplate::Uniplate;
+
+
+
+    let mut result = String::new();
+    if let Literal::AbstractLiteral(lit) = data {
+
+        if let AbstractLiteral::Matrix(item, _) = &*lit {
+            let mut rows = Vec::new();
+            for row in item {
+                if let Literal::AbstractLiteral(AbstractLiteral::Matrix(inner, _)) = row{
+                    let row_values: Vec<String> = inner.iter().filter_map(|inner| {
+                        if let Literal::Int(val) = inner {
+                            Some(val.to_string())
+                        } else {
+                            None
+                        }
+                    }).collect();
+
+                    if !row_values.is_empty() {
+                        rows.push(format!("[{}]", row_values.join(", ")));
+                    }
+                }
+            }result.push_str(&format!("[{}]", rows.join(", ")));
+        } 
+    }
+   
+    result
+}

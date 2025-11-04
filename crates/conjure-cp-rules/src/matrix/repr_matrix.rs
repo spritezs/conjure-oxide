@@ -69,7 +69,6 @@ fn index_matrix_to_atom_impl(expr: &Expr, symbols: &SymbolTable) -> ApplicationR
                 "matrix_to_atom".into(),
                 indices_as_lits.iter().join("_").into(),
             )));
-
             let subject = repr.expression_down(symbols)?[&indices_as_name].clone();
 
             Ok(Reduction::pure(subject))
@@ -361,7 +360,6 @@ fn matrix_ref_to_atom(expr: &Expr, symbols: &SymbolTable) -> ApplicationResult {
         if index_domains.len() > 1 {
             continue;
         }
-
         let Ok(matrix_values) = repr.expression_down(symbols) else {
             continue;
         };
