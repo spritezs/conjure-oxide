@@ -56,16 +56,15 @@ pub(super) fn run_partial_evaluator(expr: &Expr, symtab: &SymbolTable) -> Applic
             // the index must be a number
             let index: i32 = (&indices[0]).try_into().map_err(|_| RuleNotApplicable)?;
 
-            if index > 16 as i32 {
-                return Err(RuleNotApplicable);
-            }
-
             // index domain must be a single integer range with a lower bound
             if let Domain::Int(ranges) = index_domain
                 && ranges.len() == 1
                 && let Some(from) = ranges[0].lower_bound()
             {
                 let zero_indexed_index = index - from;
+                if zero_indexed_index >= es.len() as i32 {
+                    return Err(RuleNotApplicable);
+                }
                 Ok(Reduction::pure(es[zero_indexed_index as usize].clone()))
             } else {
                 Err(RuleNotApplicable)

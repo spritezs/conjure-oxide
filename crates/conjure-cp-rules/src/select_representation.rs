@@ -113,10 +113,7 @@ fn select_representation_matrix(expr: &Expr, symbols: &SymbolTable) -> Applicati
 
 
     if has_changed.load(Ordering::Relaxed) {
-        println!("{:?}",symbols);
-        println!();
-        println!();
-        println!();
+        
         Ok(Reduction::with_symbols(expr, symbols))
     } else {
         Err(RuleNotApplicable)

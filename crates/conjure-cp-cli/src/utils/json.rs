@@ -79,15 +79,10 @@ pub fn sort_json_object(value: &Value, sort_arrays: bool) -> Value {
 }
 
 
-use serde_json::Error;
-use conjure_cp::ast::{AbstractLiteral, Literal, Range, Name};
-use std::collections::BTreeMap;
+use conjure_cp::ast::{AbstractLiteral, Literal};
+
 pub fn extract_matrix(data: &Literal) -> String {
     // Initialize the result string
-    let mut result = String::new();
-    use uniplate::Uniplate;
-
-
 
     let mut result = String::new();
     if let Literal::AbstractLiteral(lit) = data {

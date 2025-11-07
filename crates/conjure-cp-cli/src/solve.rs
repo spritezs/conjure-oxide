@@ -1,8 +1,8 @@
 //! conjure_oxide solve sub-command
 #![allow(clippy::unwrap_used)]
 use std::{
-    fs::File,
-    io::Write as _,
+    fs::{File, OpenOptions},
+    io::{BufRead, Write as _, self},
     path::PathBuf,
     process::exit,
     sync::{Arc, RwLock},
@@ -10,8 +10,8 @@ use std::{
 use std::fs;
 use std::collections::BTreeMap;
 use conjure_cp::solver::adaptors::{Minion, Smt, Sat};
-use conjure_cp::ast::{Atom, Expression, Metadata, Moo};
-use conjure_cp::ast::{DeclarationKind, DeclarationPtr, Literal, Name};
+use conjure_cp::ast::Expression;
+use conjure_cp::ast::{Literal, Name};
 use std::collections::HashMap;
 use anyhow::{anyhow, ensure};
 use clap::ValueHint;
@@ -69,10 +69,7 @@ pub fn run_solve_command(global_args: GlobalArgs, solve_args: Args) -> anyhow::R
     let context = init_context(&global_args, input_file)?;
     let model = parse(&global_args, Arc::clone(&context))?;
 
-    // println!("{:?}",model);
-
     let rewritten_model = rewrite(model, &global_args, Arc::clone(&context))?;
-    println!("{}",rewritten_model);
 
     if solve_args.no_run_solver {
        
@@ -201,6 +198,9 @@ pub(crate) fn parse(
 
         let conjure_stderr = String::from_utf8(output.stderr)?;
 
+        if(!conjure_stderr.is_empty()) {
+            println!("{}",conjure_stderr);
+        }
         ensure!(conjure_stderr.is_empty(), conjure_stderr);
 
         let astjson = String::from_utf8(output.stdout)?;
@@ -253,7 +253,7 @@ fn run_solver(
     solver: SolverFamily,
     global_args: &GlobalArgs,
     cmd_args: &Args,
-    mut model: Model,
+    model: Model,
 ) -> anyhow::Result<()> {
     let out_file: Option<File> = match &cmd_args.output {
         None => None,
@@ -266,14 +266,51 @@ fn run_solver(
         ),
     };
 
-    let dom_file = "rel_doqm.essence";
+    let dom_file = "rel_dom.essence";
+
     let mut solutions = Vec::new();
     if let Some(parent_dir) = cmd_args.input_file.parent() {
 
         let dom_file_path = parent_dir.join(dom_file);
-
         if dom_file_path.exists() {
             println!("Dom Rel file '{}' found in the same directory as input file!", dom_file);
+
+            let file = File::open(&dom_file_path)?;
+            let reader = io::BufReader::new(file);
+
+            let mut lines_to_write = Vec::new();
+            let mut found_such_that = false;
+
+            let file2 = File::open(cmd_args.input_file.clone())?;
+            let reader2 = io::BufReader::new(file2);
+
+
+            for line in reader2.lines() {
+                let line = line?; 
+                
+                if found_such_that || line.contains("such that") {
+                    found_such_that = true;
+                    break;
+                }
+                lines_to_write.push(line);
+            }
+
+            found_such_that = false;
+
+            for line in reader.lines() {
+                let line = line?; 
+                
+                if found_such_that || line.contains("such that") {
+                    found_such_that = true;
+                    lines_to_write.push(line);
+                }
+            }
+
+            let mut file = OpenOptions::new().write(true).truncate(true).open(&dom_file_path)?;
+            for line in lines_to_write {
+                writeln!(file, "{}", line)?;
+            }
+
             solutions = get_solutions_with_dominance(solver, model, dom_file_path, &global_args)?
 
         } else {
@@ -324,6 +361,9 @@ pub fn get_solutions_with_dominance(
     let mut results = Vec::new();
     let mut sols_to_constraints = HashMap::new();
     loop {
+
+        // println!("{}",model);
+
         // get the next solution
         let solutions = match solver {
             SolverFamily::Sat => {
@@ -345,7 +385,7 @@ pub fn get_solutions_with_dominance(
         results.extend(solutions.clone());
 
         let blocking_constraints =
-            crate_blocking_constraint_from_solution(&model, solution, dom_file_path.clone(), &global_args)
+            crate_blocking_constraint_from_solution(solution, dom_file_path.clone(), &global_args)
             .ok_or_else(|| anyhow::anyhow!(
                 "Failed to generate blocking constraints for solution: {:?}", 
                 solution
@@ -357,68 +397,15 @@ pub fn get_solutions_with_dominance(
         model.add_constraints(blocking_constraints);
     }
 
-    // vector constaining non-dominated solutions
-    let mut final_results = Vec::new();
-    // iterate over all found solutions and filter out those that are dominated by others
-    for sol in results.iter() {
-        let mut model_copy = model.clone();
-
-        // remove blocking constraint created by the current solution
-        model_copy.remove_constraints(
-            sols_to_constraints
-                .get(sol)
-                .expect("Each solutions should have a blocking constraint")
-                .clone()
-        );
-
-       
-
-
-        // add constraints for current solution (gives the variables fixed values)
-        for (name, value) in sol.iter() {
-            let expr = Expression::Atomic(
-                Metadata::new(),
-                Atom::Reference(DeclarationPtr::new(
-                    name.clone(),
-                    DeclarationKind::ValueLetting(Expression::Atomic(
-                        Metadata::new(),
-                        Atom::Literal(value.clone()),
-                    )),
-                )),
-            );
-            let val = Expression::Atomic(Metadata::new(), Atom::Literal(value.clone()));
-            let eq = Expression::Eq(Metadata::new(), Moo::new(expr), Moo::new(val));
-            model_copy.add_constraint(eq.clone());
-        }
-
- println!("{}",model_copy);
-
-        // check if the solution is still valid
-        let sols = match solver {
-            SolverFamily::Sat => {
-                get_solutions_no_dominance(Sat::default(), model_copy, -1, &global_args.save_solver_input_file)?
-            }
-            SolverFamily::Minion => {
-                get_solutions_no_dominance(Minion::default(), model_copy, -1, &global_args.save_solver_input_file)?
-            }
-            SolverFamily::Smt => {
-                get_solutions_no_dominance(Smt::default(), model_copy, -1, &global_args.save_solver_input_file)?
-            }
-        };
-
-        if !sols.is_empty() {
-            final_results.push(sol.clone());
-        }
-    }
-    Ok(final_results)
+    Ok(results)
 }
 
 pub fn crate_blocking_constraint_from_solution(
-    model: &Model,
     solution: &BTreeMap<Name, Literal>,
     dom_file_path: PathBuf,
     global_args: &GlobalArgs,
 ) -> Option<Vec<Expression>> {
+
 
     // read domrel model
     let file_content = fs::read_to_string(&dom_file_path)
@@ -447,14 +434,13 @@ pub fn crate_blocking_constraint_from_solution(
     // write model to new file
     let output_file_path = generate_output_file_path(&dom_file_path);
     let _ = fs::write(&output_file_path, modified_content);
-    
+
     // parse model
     let context = init_context(&global_args, output_file_path).ok()?;
+
     let model = parse(&global_args, Arc::clone(&context)).ok()?;
 
     let rewritten = rewrite(model, &global_args, Arc::clone(&context)).ok()?;
-
-    println!("{}",rewritten);
     // add constraints to model
 
     Some(rewritten
