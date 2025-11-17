@@ -198,7 +198,7 @@ pub(crate) fn parse(
 
         let conjure_stderr = String::from_utf8(output.stderr)?;
 
-        if(!conjure_stderr.is_empty()) {
+        if !conjure_stderr.is_empty() {
             println!("{}",conjure_stderr);
         }
         ensure!(conjure_stderr.is_empty(), conjure_stderr);
@@ -266,9 +266,10 @@ fn run_solver(
         ),
     };
 
+   
     let dom_file = "rel_dom.essence";
 
-    let mut solutions = Vec::new();
+    let solutions;
     if let Some(parent_dir) = cmd_args.input_file.parent() {
 
         let dom_file_path = parent_dir.join(dom_file);
@@ -288,14 +289,11 @@ fn run_solver(
             for line in reader2.lines() {
                 let line = line?; 
                 
-                if found_such_that || line.contains("such that") {
-                    found_such_that = true;
+                if line.contains("such that") {
                     break;
                 }
                 lines_to_write.push(line);
             }
-
-            found_such_that = false;
 
             for line in reader.lines() {
                 let line = line?; 
@@ -310,19 +308,35 @@ fn run_solver(
             for line in lines_to_write {
                 writeln!(file, "{}", line)?;
             }
+            let mut total_time: f64 = 0.0;
+            solutions = get_solutions_with_dominance(solver, model, dom_file_path, &global_args, &mut total_time)?;
 
-            solutions = get_solutions_with_dominance(solver, model, dom_file_path, &global_args)?
+
+            match &cmd_args.output {
+                None => {
+                    return Err(anyhow::anyhow!("Output path is None").context("Expected an output file path"));
+                 },
+                Some(pth) => {
+                    let mut new_path = pth.clone();
+                    if let Some(parent_dir) = new_path.parent() {
+                        let new_file_name = "time.json";
+                        let new_full_path = parent_dir.join(new_file_name);
+                        new_path = new_full_path;
+                    }
+                    File::create(new_path)?.write_all(format!("Total time: {}\n", total_time).as_bytes())?; 
+                }
+            };
 
         } else {
             match solver {
             SolverFamily::Sat => {
-                 solutions = get_solutions_no_dominance(Sat::default(), model, cmd_args.number_of_solutions, &global_args.save_solver_input_file)?
+                 solutions = get_solutions_no_dominance(Sat::default(), model, cmd_args.number_of_solutions, &global_args.save_solver_input_file, None)?
             }
             SolverFamily::Minion => {
-                 solutions = get_solutions_no_dominance(Minion::default(), model, cmd_args.number_of_solutions, &global_args.save_solver_input_file)?
+                 solutions = get_solutions_no_dominance(Minion::default(), model, cmd_args.number_of_solutions, &global_args.save_solver_input_file, None)?
             }
             SolverFamily::Smt => {
-                 solutions = get_solutions_no_dominance(Smt::default(), model, cmd_args.number_of_solutions, &global_args.save_solver_input_file)?
+                 solutions = get_solutions_no_dominance(Smt::default(), model, cmd_args.number_of_solutions, &global_args.save_solver_input_file, None)?
             }
         }
         }
@@ -347,6 +361,10 @@ fn run_solver(
             )
         }
     }
+
+
+
+
     Ok(())
 }
 
@@ -356,6 +374,7 @@ pub fn get_solutions_with_dominance(
     mut model: Model,
     dom_file_path: PathBuf,
     global_args: &GlobalArgs,
+    total_time: &mut f64,
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
     // all non-dominated solutions
     let mut results = Vec::new();
@@ -367,16 +386,15 @@ pub fn get_solutions_with_dominance(
         // get the next solution
         let solutions = match solver {
             SolverFamily::Sat => {
-                get_solutions_no_dominance(Sat::default(), model.clone(), 1, &global_args.save_solver_input_file)?
+                get_solutions_no_dominance(Sat::default(), model.clone(), 1, &global_args.save_solver_input_file, Some(total_time))?
             }
             SolverFamily::Minion => {
-                get_solutions_no_dominance(Minion::default(), model.clone(), 1, &global_args.save_solver_input_file)?
+                get_solutions_no_dominance(Minion::default(), model.clone(), 1, &global_args.save_solver_input_file, Some(total_time))?
             }
             SolverFamily::Smt => {
-                get_solutions_no_dominance(Smt::default(), model.clone(), 1, &global_args.save_solver_input_file)?
+                get_solutions_no_dominance(Smt::default(), model.clone(), 1, &global_args.save_solver_input_file, Some(total_time))?
             }
         };
-
         // no more solutions
         let Some(solution) = solutions.first() else {
             break;

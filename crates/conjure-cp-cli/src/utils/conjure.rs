@@ -24,6 +24,7 @@ pub fn get_solutions_no_dominance(
     model: Model,
     num_sols: i32,
     solver_input_file: &Option<PathBuf>,
+    total_time: Option<&mut f64>,
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
     let adaptor_name = solver_adaptor.get_name().unwrap_or("UNKNOWN".into());
     let solver = Solver::new(solver_adaptor);
@@ -78,7 +79,9 @@ pub fn get_solutions_no_dominance(
     };
 
     solver.save_stats_to_context();
-
+    if let Some(time) = total_time {
+        *time += solver.stats().conjure_solver_wall_time_s;
+    }
     // Get the collections of solutions and model symbols
     #[allow(clippy::unwrap_used)]
     let mut sols_guard = (*all_solutions_ref).lock().unwrap();

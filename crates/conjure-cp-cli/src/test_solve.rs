@@ -34,6 +34,7 @@ pub fn run_test_solve_command(global_args: GlobalArgs, local_args: Args) -> anyh
         rewritten_model,
         0,
         &global_args.save_solver_input_file,
+        None,
     )?;
 
     let conjure_solutions =

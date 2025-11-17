@@ -12,11 +12,11 @@ use conjure_cp::rule_engine::{
 
 /// Converts an eq operation involving two matrices into a bunch of =
 #[register_rule(("Base", 8002))]
-fn eq_to_compr(expr: &Expression, symtab: &SymbolTable) -> ApplicationResult {
+fn eq_to_compr(expr: &Expression, _symtab: &SymbolTable) -> ApplicationResult {
     let mut res: Vec<Expression> = Vec::new();
     if let Expression::Eq(_, a, b) = expr {
    
-        if let Expression::Atomic(_, Atom::Reference(d)) = &**a {
+        if let Expression::Atomic(_, Atom::Reference(_d)) = &**a {
                  
 
 
