@@ -55,10 +55,9 @@ impl Model {
         submodel.add_constraints(constraint);
     }
 
-    pub fn remove_constraint(&mut self, constraint: Expression) 
-    {
+    pub fn get_constraints(&mut self) -> &Vec<Expression> {
         let submodel = self.as_submodel_mut();
-        submodel.remove_constraint(constraint);
+        submodel.constraints()
     }
 
     pub fn from_submodel(submodel: SubModel) -> Model {
@@ -66,6 +65,16 @@ impl Model {
             submodel,
             ..Default::default()
         }
+    }
+
+    pub fn remove_constraint(&mut self, constraint: Expression) {
+        let submodel = self.as_submodel_mut();
+        submodel.remove_constraint(constraint);
+    }
+
+    pub fn remove_constraints(&mut self, constraint: Vec<Expression>) {
+        let submodel = self.as_submodel_mut();
+        submodel.remove_constraints(constraint);
     }
 
     /// Creates a new model from the given context.

@@ -23,7 +23,7 @@ use conjure_cp::{
     parse::conjure_json::model_from_json, rule_engine::get_rules, solver::SolverFamily,
 };
 use conjure_cp_cli::find_conjure::conjure_executable;
-use conjure_cp_cli::utils::conjure::{get_sat_solutions, solutions_to_json, get_minion_solutions};
+use conjure_cp_cli::utils::conjure::{get_solutions, solutions_to_json};
 use serde_json::to_string_pretty;
 
 use crate::cli::{GlobalArgs, LOGGING_HELP_HEADING};
@@ -62,6 +62,7 @@ pub fn run_solve_command(global_args: GlobalArgs, solve_args: Args) -> anyhow::R
 
     let context = init_context(&global_args, input_file)?;
     let model = parse(&global_args, Arc::clone(&context))?;
+
     let rewritten_model = rewrite(model, &global_args, Arc::clone(&context))?;
 
     if solve_args.no_run_solver {
@@ -87,14 +88,12 @@ pub fn run_solve_command(global_args: GlobalArgs, solve_args: Args) -> anyhow::R
             };
         }
     } else {
-        match global_args.solver {
-            SolverFamily::Sat => {
-                run_sat_solver(&global_args, &solve_args, rewritten_model)?;
-            }
-            SolverFamily::Minion => {
-                run_minion(&global_args, &solve_args, rewritten_model)?;
-            }
-        }
+        run_solver(
+            global_args.solver,
+            &global_args,
+            &solve_args,
+            rewritten_model,
+        )?
     }
 
     // still do postamble even if we didn't run the solver
@@ -179,10 +178,10 @@ pub(crate) fn parse(
 
     tracing::info!(target: "file", "Input file: {}", input_file);
     if global_args.use_native_parser {
-        parse_essence_file_native(input_file.as_str(), context.clone()).map_err(|e| anyhow!(e))
+        parse_essence_file_native(input_file.as_str(), context.clone()).map_err(|e| e.into())
     } else {
         conjure_executable()
-            .map_err(|e| anyhow!("Could not find correct conjure executable: {}", e))?;
+            .map_err(|e| anyhow!("Could not find correct conjure executable: {e}"))?;
 
         let mut cmd = std::process::Command::new("conjure");
         let output = cmd
@@ -241,7 +240,12 @@ pub(crate) fn rewrite(
     Ok(new_model)
 }
 
-fn run_minion(global_args: &GlobalArgs, cmd_args: &Args, model: Model) -> anyhow::Result<()> {
+fn run_solver(
+    solver: SolverFamily,
+    global_args: &GlobalArgs,
+    cmd_args: &Args,
+    model: Model,
+) -> anyhow::Result<()> {
     let out_file: Option<File> = match &cmd_args.output {
         None => None,
         Some(pth) => Some(
@@ -253,44 +257,8 @@ fn run_minion(global_args: &GlobalArgs, cmd_args: &Args, model: Model) -> anyhow
         ),
     };
 
-    let solutions = get_minion_solutions(
-        model,
-        cmd_args.number_of_solutions,
-        &global_args.save_solver_input_file,
-    )?;
-    tracing::info!(target: "file", "Solutions: {}", solutions_to_json(&solutions));
-
-    let solutions_json = solutions_to_json(&solutions);
-    let solutions_str = to_string_pretty(&solutions_json)?;
-    match out_file {
-        None => {
-            println!("Solutions:");
-            println!("{solutions_str}");
-        }
-        Some(mut outf) => {
-            outf.write_all(solutions_str.as_bytes())?;
-            println!(
-                "Solutions saved to {:?}",
-                &cmd_args.output.clone().unwrap().canonicalize()?
-            )
-        }
-    }
-    Ok(())
-}
-
-fn run_sat_solver(global_args: &GlobalArgs, cmd_args: &Args, model: Model) -> anyhow::Result<()> {
-    let out_file: Option<File> = match &cmd_args.output {
-        None => None,
-        Some(pth) => Some(
-            File::options()
-                .create(true)
-                .truncate(true)
-                .write(true)
-                .open(pth)?,
-        ),
-    };
-
-    let solutions = get_sat_solutions(
+    let solutions = get_solutions(
+        solver,
         model,
         cmd_args.number_of_solutions,
         &global_args.save_solver_input_file,

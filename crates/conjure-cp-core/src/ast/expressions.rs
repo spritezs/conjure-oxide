@@ -18,6 +18,7 @@ use conjure_cp_enum_compatibility_macro::document_compatibility;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
+use polyquine::Quine;
 use uniplate::{Biplate, Uniplate};
 
 use super::ac_operators::ACOperatorKind;
@@ -57,7 +58,7 @@ static_assertions::assert_eq_size!([u8; 104], Expression);
 /// used to build rules and conditions for the model.
 #[document_compatibility]
 #[serde_as]
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Uniplate)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Uniplate, Quine)]
 #[biplate(to=Metadata)]
 #[biplate(to=Atom)]
 #[biplate(to=DeclarationPtr)]
@@ -71,6 +72,7 @@ static_assertions::assert_eq_size!([u8; 104], Expression);
 #[biplate(to=RecordValue<Expression>)]
 #[biplate(to=RecordValue<Literal>)]
 #[biplate(to=Literal)]
+#[path_prefix(conjure_cp::ast)]
 pub enum Expression {
     AbstractLiteral(Metadata, AbstractLiteral<Expression>),
     /// The top of the model
@@ -83,6 +85,9 @@ pub enum Expression {
     /// A comprehension.
     ///
     /// The inside of the comprehension opens a new scope.
+    // todo (gskorokhod): Comprehension contains a SubModel which contains a bunch of Rc pointers.
+    // This makes implementing Quine tricky (it doesnt support Rc, by design). Skip it for now.
+    #[polyquine_skip]
     Comprehension(Metadata, Moo<Comprehension>),
 
     /// Defines dominance ("Solution A is preferred over Solution B")
@@ -137,6 +142,8 @@ pub enum Expression {
     /// - If b is true, then `toInt(b) == 1`
     ToInt(Metadata, Moo<Expression>),
 
+    // todo (gskorokhod): Same reason as for Comprehension
+    #[polyquine_skip]
     Scope(Metadata, Moo<SubModel>),
 
     /// `|x|` - absolute value of `x`
@@ -319,7 +326,9 @@ pub enum Expression {
     ///
     /// + [Minion documentation](https://minion-solver.readthedocs.io/en/stable/usage/constraints.html#minuseq)
     /// + `rules::minion::boolean_literal_to_wliteral`.
+    // todo (gskorokhod): Skip because of DeclarationPtr
     #[compatible(Minion)]
+    #[polyquine_skip]
     FlatWatchedLiteral(
         Metadata,
         #[serde_as(as = "DeclarationPtrAsId")] DeclarationPtr,
@@ -468,7 +477,9 @@ pub enum Expression {
     /// Declaration of an auxiliary variable.
     ///
     /// As with Savile Row, we semantically distinguish this from `Eq`.
+    // todo (gskorokhod): Skip because of DeclarationPtr
     #[compatible(Minion)]
+    #[polyquine_skip]
     AuxDeclaration(
         Metadata,
         #[serde_as(as = "DeclarationPtrAsId")] DeclarationPtr,

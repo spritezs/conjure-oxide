@@ -1,50 +1,58 @@
+use conjure_cp::ast::{DeclarationKind, DeclarationPtr, Literal, Name};
+use conjure_cp::bug;
+use conjure_cp::context::Context;
+use conjure_cp::solver::adaptors::Minion;
+use conjure_cp::solver::adaptors::Sat;
+
+use conjure_cp::solver::SolverFamily;
+use itertools::Itertools as _;
+use serde_json::{Map, Value as JsonValue};
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::string::ToString;
 use std::sync::{Arc, Mutex, RwLock};
 
-use conjure_cp::ast::{DeclarationKind, Literal, Name};
-use conjure_cp::bug;
-use conjure_cp::context::Context;
-
-use conjure_cp::solver::adaptors::Sat;
-use serde_json::{Map, Value as JsonValue};
-
-use itertools::Itertools as _;
 use tempfile::tempdir;
 
 use crate::utils::json::sort_json_object;
 use conjure_cp::Model;
-use conjure_cp::parse::tree_sitter::EssenceParseError;
+use conjure_cp::ast::{Atom, Expression, Metadata, Moo};
 use conjure_cp::parse::tree_sitter::parse_essence_file;
 use conjure_cp::solver::Solver;
 use conjure_cp::rule_engine::rewrite_naive;
 use conjure_cp::solver::adaptors::Minion;
 use conjure_cp::ast::{Atom, Expression, Metadata, Moo};
+use conjure_cp::rule_engine::rewrite_naive;
+use conjure_cp::solver::{Solver, SolverAdaptor};
+
 use glob::glob;
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-
-
-pub fn get_minion_solutions(
+pub fn get_solutions(
+    solver: SolverFamily,
     model: Model,
     num_sols: i32,
     solver_input_file: &Option<PathBuf>,
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
-
-    if let Some(Expression::DominanceRelation(_, inner_expr)) = model.dominance.clone()  
-    {
-        return get_minion_solutions_dominance(model, num_sols, solver_input_file, (*inner_expr).clone());
-    }
-    else
-    {
-        return get_minion_solutions_no_dominance(model, num_sols, solver_input_file);
+    if let Some(Expression::DominanceRelation(_, dom_rel)) = model.dominance.clone() {
+        get_solutions_with_dominance(solver, model, num_sols, solver_input_file, &dom_rel)
+    } else {
+        match solver {
+            SolverFamily::Sat => {
+                get_solutions_no_dominance(Sat::default(), model, num_sols, solver_input_file)
+            }
+            SolverFamily::Minion => {
+                get_solutions_no_dominance(Minion::default(), model, num_sols, solver_input_file)
+            }
+        }
     }
 }
 
-pub fn get_minion_solutions_dominance(
+pub fn get_solutions_with_dominance(
+    solver: SolverFamily,
     model: Model,
     num_sols: i32,
     solver_input_file: &Option<PathBuf>,
@@ -57,7 +65,7 @@ pub fn get_minion_solutions_dominance(
     }
     else
     {
-        return get_minion_solutions_dominance_no_incomparability(model, num_sols, solver_input_file, dominance_rel);
+        return get_minion_solutions_dominance_no_incomparability(solver, model, num_sols, solver_input_file, dominance_rel);
     }
 }
 
@@ -88,7 +96,7 @@ pub fn get_minion_solutions_dominance_with_incomparability(
         
         // add blocking constraints
         for solution in solutions{
-            if let Some(blocking_constraint) = crate_blocking_constraint_from_solution(&dominance_expression, &solution) {
+            if let Some(blocking_constraint) = crate_blocking_constraint_from_solution(&model, solution, dominance_expression) {
                 model.add_constraint(blocking_constraint);
             }
         }
@@ -109,57 +117,6 @@ pub fn get_minion_solutions_dominance_with_incomparability(
     Ok(results)
 }
 
-
-
-pub fn get_minion_solutions_dominance_no_incomparability(
-    mut model: Model,
-    // TODO: after filtering only keep `num_sols` solutions
-    _num_sols: i32,
-    solver_input_file: &Option<PathBuf>,
-    dominance_expression: Expression
-) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
-
-    // All non-dominated solutions
-    let mut results = Vec::new();
-
-    let expr = Expression::Atomic(Metadata::new(), Atom::Literal(Literal::Int(1)));
-    loop {
-        // Get the next solution
-        let solutions = get_minion_solutions_no_dominance(model.clone(), 1, solver_input_file)?;
-
-        // No more solutions
-        let Some(solution) = solutions.first() else {
-            break;
-        };
-
-        // Add to results
-        results.extend(solutions.clone());
-
-        // Create and apply new blocking constraint
-        let mut model_copy = model.clone();
-        let constraints: Vec<Expression> = model_copy.as_submodel().constraints().into_iter().cloned().collect();
-
-        for constraint in constraints {
-            model_copy.remove_constraint(constraint.clone());
-        }
-
-        if let Some(blocking_constraint) = crate_blocking_constraint_from_solution(&dominance_expression, &solution) {
-            model_copy.add_constraint(blocking_constraint);
-        }
-
-        // Rewrite model
-        println!("{}",model_copy);
-        let rule_sets = model.context.read().unwrap().rule_sets.clone();
-        model_copy = rewrite_naive(&model_copy, &rule_sets, false, false)?;
-        model.add_constraints(model_copy.as_submodel().constraints().clone());
-
-        // For debugging
-        println!("{}", model);
-    }
-
-    Ok(results)
-}
-
 // pub fn crate_level_constraint_from_incomp_fct(
 //     expr: &Expression,
 //     level: i32
@@ -169,27 +126,132 @@ pub fn get_minion_solutions_dominance_no_incomparability(
 // }
 
 
+pub fn get_minion_solutions_dominance_no_incomparability(
+    solver: SolverFamily,
+    mut model: Model,
+    _num_sols: i32,
+    solver_input_file: &Option<PathBuf>,
+    dom_rel: &Expression,
+) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
+    // all non-dominated solutions
+    let mut results = Vec::new();
+    let mut sols_to_constraints = HashMap::new();
+    loop {
+        // get the next solution
+        let solutions = match solver {
+            SolverFamily::Sat => {
+                get_solutions_no_dominance(Sat::default(), model.clone(), 1, solver_input_file)?
+            }
+            SolverFamily::Minion => {
+                get_solutions_no_dominance(Minion::default(), model.clone(), 1, solver_input_file)?
+            }
+        };
+
+        // no more solutions
+        let Some(solution) = solutions.first() else {
+            break;
+        };
+
+        // add to results
+        results.extend(solutions.clone());
+
+        let blocking_constraints =
+            crate_blocking_constraint_from_solution(&model, solution, dom_rel);
+
+        sols_to_constraints.insert(solution.clone(), blocking_constraints.clone());
+
+        // create and apply new blocking constraints
+        model.add_constraints(blocking_constraints);
+    }
+
+    // vector constaining non-dominated solutions
+    let mut final_results = Vec::new();
+
+    // iterate over all found solutions and filter out those that are dominated by others
+    for sol in results.iter() {
+        let mut model_copy = model.clone();
+
+        // remove blocking constraint created by the current solution
+        model_copy.remove_constraints(
+            sols_to_constraints
+                .get(sol)
+                .expect("Each solutions should have a blocking constraint")
+                .clone(),
+        );
+
+        // add constraints for current solution (gives the variables fixed values)
+        for (name, value) in sol.iter() {
+            let expr = Expression::Atomic(
+                Metadata::new(),
+                Atom::Reference(DeclarationPtr::new(
+                    name.clone(),
+                    DeclarationKind::ValueLetting(Expression::Atomic(
+                        Metadata::new(),
+                        Atom::Literal(value.clone()),
+                    )),
+                )),
+            );
+            let val = Expression::Atomic(Metadata::new(), Atom::Literal(value.clone()));
+            let eq = Expression::Eq(Metadata::new(), Moo::new(expr), Moo::new(val));
+            model_copy.add_constraint(eq.clone());
+        }
+
+        // check if the solution is still valid
+        let sols = match solver {
+            SolverFamily::Sat => {
+                get_solutions_no_dominance(Sat::default(), model_copy, -1, solver_input_file)?
+            }
+            SolverFamily::Minion => {
+                get_solutions_no_dominance(Minion::default(), model_copy, -1, solver_input_file)?
+            }
+        };
+
+        if !sols.is_empty() {
+            final_results.push(sol.clone());
+        }
+    }
+    Ok(final_results)
+}
+
 pub fn crate_blocking_constraint_from_solution(
+    model: &Model,
+    solution: &BTreeMap<Name, Literal>,
+    dom_rel: &Expression,
+) -> Vec<Expression> {
+    use uniplate::Uniplate;
+
+    // get blocking constraint expression
+    let raw_blocking_constraint =
+        dom_rel.rewrite(&|e| sub_in_solution_into_dominance_expr(&e, solution));
+
+    let mut model_copy = model.clone();
+    model_copy.remove_constraints(model_copy.as_submodel().constraints().clone());
+    model_copy.add_constraint(raw_blocking_constraint);
+
+    // rewrite model
+    let rule_sets = model.context.read().unwrap().rule_sets.clone();
+    let rewritten = rewrite_naive(&model_copy, &rule_sets, false, false);
+
+    rewritten
+        .expect("Should be able to rewrite the model")
+        .as_submodel()
+        .constraints()
+        .clone()
+}
+
+pub fn sub_in_solution_into_dominance_expr(
     expr: &Expression,
     solution: &BTreeMap<Name, Literal>,
 ) -> Option<Expression> {
-
-    use uniplate::Uniplate;
-    Some(expr.rewrite(&|e| { sub_solution_in_dominance_expr(&e, solution) }))
-}
-
-pub fn sub_solution_in_dominance_expr(expr: &Expression, solution: &BTreeMap<Name, Literal>) -> Option<Expression>
-{
-    use Expression::*;
-    use conjure_cp::ast::AbstractLiteral;
+    use Expression::{Atomic, FromSolution};
 
     match expr {
         FromSolution(_, name_expr) => {
             if let Atomic(_, Atom::Reference(ptr)) = &**name_expr {
                 let var_name = ptr.name();
-                solution.get(&var_name).map(|value| {
-                    Atomic(Metadata::new(), Atom::Literal(value.clone()))
-                })
+                solution
+                    .get(&var_name)
+                    .map(|value| Atomic(Metadata::new(), Atom::Literal(value.clone())))
             } else {
                 None
             }
@@ -199,15 +261,18 @@ pub fn sub_solution_in_dominance_expr(expr: &Expression, solution: &BTreeMap<Nam
     }
 }
 
-pub fn get_minion_solutions_no_dominance(
+pub fn get_solutions_no_dominance(
+    solver_adaptor: impl SolverAdaptor,
     model: Model,
     num_sols: i32,
     solver_input_file: &Option<PathBuf>,
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
-    let solver = Solver::new(Minion::new());
-    eprintln!("Building Minion model...");
+    let adaptor_name = solver_adaptor.get_name().unwrap_or("UNKNOWN".into());
+    let solver = Solver::new(solver_adaptor);
 
-    // for later...
+    eprintln!("Building {adaptor_name} model...");
+
+    // Create for later since we consume the model when loading it
     let symbols_rc = Rc::clone(model.as_submodel().symbols_ptr_unchecked());
 
     let solver = solver.load_model(model)?;
@@ -221,11 +286,14 @@ pub fn get_minion_solutions_no_dominance(
         solver.write_solver_input_file(&mut file)?;
     }
 
-    eprintln!("Running Minion...");
+    eprintln!("Running {adaptor_name}...");
 
+    // Create two arcs, one to pass into the solver callback, one to get solutions out later
     let all_solutions_ref = Arc::new(Mutex::<Vec<BTreeMap<Name, Literal>>>::new(vec![]));
     let all_solutions_ref_2 = all_solutions_ref.clone();
+
     let solver = if num_sols > 0 {
+        // Get num_sols solutions
         let sols_left = Mutex::new(num_sols);
 
         #[allow(clippy::unwrap_used)]
@@ -240,6 +308,7 @@ pub fn get_minion_solutions_no_dominance(
             }))
             .unwrap()
     } else {
+        // Get all solutions
         #[allow(clippy::unwrap_used)]
         solver
             .solve(Box::new(move |sols| {
@@ -252,11 +321,14 @@ pub fn get_minion_solutions_no_dominance(
 
     solver.save_stats_to_context();
 
+    // Get the collections of solutions and model symbols
     #[allow(clippy::unwrap_used)]
     let mut sols_guard = (*all_solutions_ref).lock().unwrap();
     let sols = &mut *sols_guard;
     let symbols = symbols_rc.borrow();
 
+    // Get the representations for each variable by name, since some variables are
+    // divided into multiple auxiliary variables(see crate::representation::Representation)
     let names = symbols.clone().into_iter().map(|x| x.0).collect_vec();
     let representations = names
         .into_iter()
@@ -280,12 +352,14 @@ pub fn get_minion_solutions_no_dominance(
         .collect_vec();
 
     for sol in sols.iter_mut() {
+        // Get the value of complex variables using their auxiliary variables
         for (name, representation) in representations.iter() {
             let value = representation.value_up(sol).unwrap();
             sol.insert(name.clone(), value);
         }
 
-        // remove represented variables
+        // Remove auxiliary variables since we've found the value of the
+        // variable they represent
         *sol = sol
             .clone()
             .into_iter()
@@ -293,70 +367,16 @@ pub fn get_minion_solutions_no_dominance(
             .collect();
     }
 
-    Ok(sols.clone().into_iter().filter(|x| !x.is_empty()).collect())
-}
-
-pub fn get_sat_solutions(
-    model: Model,
-    num_sols: i32,
-    solver_input_file: &Option<PathBuf>,
-) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
-    let solver = Solver::new(Sat::default());
-    eprintln!("Building SAT model...");
-    let solver = solver.load_model(model)?;
-
-    if let Some(solver_input_file) = solver_input_file {
-        eprintln!(
-            "Writing solver input file to {}",
-            solver_input_file.display()
-        );
-        let mut file = std::fs::File::create(solver_input_file)?;
-        solver.write_solver_input_file(&mut file)?;
-    }
-
-    eprintln!("Running SAT...");
-
-    let all_solutions_ref = Arc::new(Mutex::<Vec<BTreeMap<Name, Literal>>>::new(vec![]));
-    let all_solutions_ref_2 = all_solutions_ref.clone();
-    let solver = if num_sols > 0 {
-        let sols_left = Mutex::new(num_sols);
-
-        #[allow(clippy::unwrap_used)]
-        solver
-            .solve(Box::new(move |sols| {
-                let mut all_solutions = (*all_solutions_ref_2).lock().unwrap();
-                (*all_solutions).push(sols.into_iter().collect());
-                let mut sols_left = sols_left.lock().unwrap();
-                *sols_left -= 1;
-
-                *sols_left != 0
-            }))
-            .unwrap()
-    } else {
-        #[allow(clippy::unwrap_used)]
-        solver
-            .solve(Box::new(move |sols| {
-                let mut all_solutions = (*all_solutions_ref_2).lock().unwrap();
-                (*all_solutions).push(sols.into_iter().collect());
-                true
-            }))
-            .unwrap()
-    };
-
-    solver.save_stats_to_context();
-
-    #[allow(clippy::unwrap_used)]
-    let sols = (*all_solutions_ref).lock().unwrap();
-
-    Ok((*sols).clone())
+    sols.retain(|x| !x.is_empty());
+    Ok(sols.clone())
 }
 
 #[allow(clippy::unwrap_used)]
 pub fn get_solutions_from_conjure(
     essence_file: &str,
     context: Arc<RwLock<Context<'static>>>,
-) -> Result<Vec<BTreeMap<Name, Literal>>, EssenceParseError> {
-    let tmp_dir = tempdir().unwrap();
+) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
+    let tmp_dir = tempdir()?;
 
     let mut cmd = std::process::Command::new("conjure");
     let output = cmd
@@ -366,19 +386,19 @@ pub fn get_solutions_from_conjure(
         .arg("-o")
         .arg(tmp_dir.path())
         .arg(essence_file)
-        .output()
-        .map_err(|e| EssenceParseError::ConjureSolveError(e.to_string()))?;
+        .output()?;
 
     if !output.status.success() {
-        return Err(EssenceParseError::ConjureSolveError(format!(
-            "conjure solve exited with failure: {}",
-            String::from_utf8(output.stderr).unwrap()
+        let stderr =
+            String::from_utf8(output.stderr).unwrap_or_else(|e| e.utf8_error().to_string());
+        return Err(anyhow::Error::msg(format!(
+            "Error: `conjure solve` exited with code {}; stderr: {}",
+            output.status, stderr
         )));
     }
 
-    let solutions_files: Vec<_> = glob(&format!("{}/*.solution", tmp_dir.path().display()))
-        .unwrap()
-        .collect();
+    let solutions_files: Vec<_> =
+        glob(&format!("{}/*.solution", tmp_dir.path().display()))?.collect();
 
     let solutions_set: Vec<_> = solutions_files
         .par_iter()

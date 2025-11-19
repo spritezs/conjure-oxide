@@ -46,11 +46,20 @@
         ]
       }
     },
-    "e_prime_label": {
+    "language_declaration": {
       "type": "TOKEN",
       "content": {
-        "type": "STRING",
-        "value": "language ESSENCE' 1.0"
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "language"
+          },
+          {
+            "type": "PATTERN",
+            "value": ".*"
+          }
+        ]
       }
     },
     "constant": {
@@ -942,13 +951,12 @@
     },
     {
       "type": "SYMBOL",
-      "name": "e_prime_label"
+      "name": "language_declaration"
     }
   ],
   "conflicts": [],
   "precedences": [],
   "externals": [],
   "inline": [],
-  "supertypes": [],
-  "reserved": {}
+  "supertypes": []
 }
