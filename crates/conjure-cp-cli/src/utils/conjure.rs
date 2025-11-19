@@ -1,7 +1,6 @@
 use conjure_cp::ast::{DeclarationKind, DeclarationPtr, Literal, Name};
 use conjure_cp::bug;
 use conjure_cp::context::Context;
-use conjure_cp::solver::adaptors::Minion;
 use conjure_cp::solver::adaptors::Sat;
 
 use conjure_cp::solver::SolverFamily;
@@ -20,13 +19,9 @@ use crate::utils::json::sort_json_object;
 use conjure_cp::Model;
 use conjure_cp::ast::{Atom, Expression, Metadata, Moo};
 use conjure_cp::parse::tree_sitter::parse_essence_file;
-use conjure_cp::solver::Solver;
 use conjure_cp::rule_engine::rewrite_naive;
 use conjure_cp::solver::adaptors::Minion;
-use conjure_cp::ast::{Atom, Expression, Metadata, Moo};
-use conjure_cp::rule_engine::rewrite_naive;
 use conjure_cp::solver::{Solver, SolverAdaptor};
-
 use glob::glob;
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -38,7 +33,7 @@ pub fn get_solutions(
     solver_input_file: &Option<PathBuf>,
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
     if let Some(Expression::DominanceRelation(_, dom_rel)) = model.dominance.clone() {
-        get_solutions_with_dominance(solver, model, num_sols, solver_input_file, &dom_rel)
+        get_solutions_with_dominance(solver, model, solver_input_file, dom_rel.into())
     } else {
         match solver {
             SolverFamily::Sat => {
@@ -54,88 +49,120 @@ pub fn get_solutions(
 pub fn get_solutions_with_dominance(
     solver: SolverFamily,
     model: Model,
-    num_sols: i32,
     solver_input_file: &Option<PathBuf>,
     dominance_rel: Expression
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
 
     if let Some(Expression::IncomparabilityFunction(_, inner_expr)) = model.incomparability_fct.clone()  
     {
-        return get_minion_solutions_dominance_with_incomparability(model, num_sols, solver_input_file, dominance_rel.clone(), (*inner_expr).clone());
+        return get_minion_solutions_dominance_with_incomparability(solver, model, solver_input_file, dominance_rel.clone(), (*inner_expr).clone());
     }
     else
     {
-        return get_minion_solutions_dominance_no_incomparability(solver, model, num_sols, solver_input_file, dominance_rel);
+        return get_minion_solutions_dominance_no_incomparability(solver, model, solver_input_file, &dominance_rel);
     }
 }
 
 pub fn get_minion_solutions_dominance_with_incomparability(
+    solver: SolverFamily,
     mut model: Model,
-    // TODO: after filtering only keep `num_sols` solutions
-    _num_sols: i32,
     solver_input_file: &Option<PathBuf>,
     dominance_expression: Expression,
     incomparability_fct: Expression
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
 
     let mut results = Vec::new();
+    let mut sols_to_constraints: HashMap<BTreeMap<Name, Literal>, Vec<Expression>> = HashMap::new();
 
-    // let levels = get_levels(incomparability_fct);
-
-    let expr = Expression::Atomic(Metadata::new(), Atom::Literal(Literal::Int(1)));
-    // for level in levels{
-
-        // add level constraint
-        model.add_constraint(expr.clone());
-
-        // run model
-        let solutions = get_minion_solutions_no_dominance(model.clone(), -1, solver_input_file)?;
-
-        // save sols in results
-        results.extend(solutions.clone());
-        
-        // add blocking constraints
-        for solution in solutions{
-            if let Some(blocking_constraint) = crate_blocking_constraint_from_solution(&model, solution, dominance_expression) {
-                model.add_constraint(blocking_constraint);
-            }
-        }
-       
-        // remove level constraint
-        model.remove_constraint(expr);
-        
-
-        let model_copy = model.clone();
-
-        // rewrite model (TODO: optimize to avoid full rewrite?)
-        // let rule_sets = model.context.read().unwrap().rule_sets.clone();
-        // model = rewrite_naive(&model, &rule_sets, false, false)?;
-
+    let levels = incomparability_fct.domain_of();
     
-    // }
+    match levels.expect("Expression inside the incomparability function should have a domain!").values_i32() {
+        Ok(level_values) => {
+            let mut counter = 1;
+            for level in &level_values{
 
-    Ok(results)
+                println!("Exploring level {} out of {}", counter, level_values.len());
+
+                // add level constraint
+                let level_constraint = crate_level_constraint_from_incomp_fct(&model,&incomparability_fct, level);
+                model.add_constraints(level_constraint.clone());
+
+                // get every solution for that level
+                let solutions = match solver {
+                    SolverFamily::Sat => {
+                        get_solutions_no_dominance(Sat::default(), model.clone(), -1, solver_input_file)?
+                    }
+                    SolverFamily::Minion => {
+                        get_solutions_no_dominance(Minion::default(), model.clone(), -1, solver_input_file)?
+                    }
+                };
+
+                // save sols in results
+                results.extend(solutions.clone());
+                
+                let mut new_constraints = Vec::new();
+
+                // add blocking constraints
+                for solution in &solutions{
+                    new_constraints.append(&mut crate_blocking_constraint_from_solution(&model, &solution, &dominance_expression));
+                }
+            
+                // for each solution add ALL constraints for that level to the map. This will be used later for post-processing
+                for solution in solutions {
+                    sols_to_constraints.insert(solution.clone(), new_constraints.clone());
+                }
+            
+                // remove level constraint
+                model.remove_constraints(level_constraint);
+                
+                let model_copy = model.clone();
+
+                counter+=1;
+            }
+            println!("We have {} non-dominated solutions so far.", results.len());
+            println!("Total number of solver calls is: {}", level_values.len() + results.len());
+            return Ok(results)
+        }
+        Err(err) => {
+            return Err(anyhow::anyhow!("Domain is not an integer domain").into())
+        }
+    }
+    
+    Ok(validate_solutions(solver, solver_input_file, results, model, sols_to_constraints)?)
 }
 
-// pub fn crate_level_constraint_from_incomp_fct(
-//     expr: &Expression,
-//     level: i32
-// ) -> Option<Expression> {
-
+pub fn crate_level_constraint_from_incomp_fct(
+    model: &Model,
+    expr: &Expression,
+    level: &i32
+) -> Vec<Expression> {
+    let new_level_blocking = Expression::Eq(Metadata::new(), Moo::new(expr.clone()), Moo::new(Expression::Atomic(Metadata::new(), Atom::from(*level))));
     
-// }
+    let mut model_copy = model.clone();
+    model_copy.remove_constraints(model_copy.as_submodel().constraints().clone());
+    model_copy.add_constraint(new_level_blocking);
 
+    // rewrite model
+    let rule_sets = model.context.read().unwrap().rule_sets.clone();
+    let rewritten = rewrite_naive(&model_copy, &rule_sets, false, false);
+
+    rewritten
+        .expect("Should be able to rewrite the model")
+        .as_submodel()
+        .constraints()
+        .clone()
+}
 
 pub fn get_minion_solutions_dominance_no_incomparability(
     solver: SolverFamily,
     mut model: Model,
-    _num_sols: i32,
     solver_input_file: &Option<PathBuf>,
     dom_rel: &Expression,
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
+
     // all non-dominated solutions
     let mut results = Vec::new();
-    let mut sols_to_constraints = HashMap::new();
+    let mut sols_to_constraints: HashMap<BTreeMap<Name, Literal>, Vec<Expression>> = HashMap::new();
     loop {
         // get the next solution
         let solutions = match solver {
@@ -163,6 +190,18 @@ pub fn get_minion_solutions_dominance_no_incomparability(
         // create and apply new blocking constraints
         model.add_constraints(blocking_constraints);
     }
+    println!("We have {} non-dominated solutions so far.", results.len());
+    println!("Total number of solver calls is: {}", results.len()*2);
+    Ok(validate_solutions(solver, solver_input_file, results, model, sols_to_constraints)?)
+}
+
+pub fn validate_solutions(
+    solver: SolverFamily,
+    solver_input_file: &Option<PathBuf>,
+    results: Vec<BTreeMap<Name, Literal>>,
+    model: Model,
+    sols_to_constraints: HashMap<BTreeMap<Name, Literal>,Vec<Expression>>,
+) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
 
     // vector constaining non-dominated solutions
     let mut final_results = Vec::new();
@@ -270,7 +309,7 @@ pub fn get_solutions_no_dominance(
     let adaptor_name = solver_adaptor.get_name().unwrap_or("UNKNOWN".into());
     let solver = Solver::new(solver_adaptor);
 
-    eprintln!("Building {adaptor_name} model...");
+    // eprintln!("Building {adaptor_name} model...");
 
     // Create for later since we consume the model when loading it
     let symbols_rc = Rc::clone(model.as_submodel().symbols_ptr_unchecked());
@@ -286,7 +325,7 @@ pub fn get_solutions_no_dominance(
         solver.write_solver_input_file(&mut file)?;
     }
 
-    eprintln!("Running {adaptor_name}...");
+    // eprintln!("Running {adaptor_name}...");
 
     // Create two arcs, one to pass into the solver callback, one to get solutions out later
     let all_solutions_ref = Arc::new(Mutex::<Vec<BTreeMap<Name, Literal>>>::new(vec![]));

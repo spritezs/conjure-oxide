@@ -7,3 +7,7 @@ dominanceRelation (
     (cost+carbon) >= (fromSolution(cost)+fromSolution(carbon)) /\
     (cost != fromSolution(cost) \/ carbon != fromSolution(carbon))
 )
+
+incomparabilityFunction (
+    cost+carbon
+)

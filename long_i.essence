@@ -1,0 +1,14 @@
+find a: int(1..10)
+find b: int(1..10)
+find c: int(1..10)
+find d: int(1..10)
+such that a + b + c + d <= 35
+
+dominanceRelation (
+    (a+b+c+d) >= (fromSolution(a)+fromSolution(b)+fromSolution(c)+fromSolution(d)) /\
+    (a != fromSolution(a) \/ b != fromSolution(b) \/ c != fromSolution(c) \/ d != fromSolution(d))
+)
+
+incomparabilityFunction (
+    a+b+c+d
+)

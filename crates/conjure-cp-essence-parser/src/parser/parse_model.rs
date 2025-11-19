@@ -97,12 +97,13 @@ pub fn parse_essence_with_context(
                     .child(1)
                     .expect("Expected a sub-expression inside `incomparabilityFunction`");
                 let current_symbols = model.as_submodel().symbols().clone();
-                let expr = parse_expression(inner, &source_code, &statement, &current_symbols)?;
+                let expr = parse_expression(inner, &source_code, &statement, Some(&current_symbols))?;
                 let incomp_fct = Expression::IncomparabilityFunction(Metadata::new(), Moo::new(expr));
                 if model.dominance.is_none() {
-                    return Err(EssenceParseError::ParseError(Error::Parse(
-                        "Found incomparability function but no dominance relation".to_owned(),
-                    )));
+                    return Err(EssenceParseError::syntax_error(
+                        "Found incomparability function but no dominance relation".to_string(),
+                        None,
+                    ));
                 }
                 model.incomparability_fct = Some(incomp_fct);
             }
