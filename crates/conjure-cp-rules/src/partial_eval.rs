@@ -34,6 +34,8 @@ pub(super) fn run_partial_evaluator(expr: &Expr, symtab: &SymbolTable) -> Applic
         Expr::DominanceRelation(_, _) => Err(RuleNotApplicable),
         Expr::FromSolution(_, _) => Err(RuleNotApplicable),
         Expr::IncomparabilityFunction(_, _) => Err(RuleNotApplicable),
+        Expr::Ascending(_, _) => Err(RuleNotApplicable),
+        Expr::Descending(_, _) => Err(RuleNotApplicable),
         Expr::Metavar(_, _) => Err(RuleNotApplicable),
         Expr::UnsafeIndex(_, _, _) => Err(RuleNotApplicable),
         Expr::UnsafeSlice(_, _, _) => Err(RuleNotApplicable),

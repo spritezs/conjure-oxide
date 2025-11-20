@@ -119,7 +119,9 @@ module.exports = grammar ({
       $.quantifier_expr,
       $.constant,
       $.variable,
-      $.from_solution
+      $.from_solution,
+      $.ascending,
+      $.descending
     ),
 
     not_expr: $ => prec(20, seq("!", $.expression)),
@@ -149,6 +151,9 @@ module.exports = grammar ({
     implication: $ => prec(-4, prec.left(seq($.expression, "->", $.expression))),
 
     toInt_expr: $ => seq("toInt","(",$.expression,")"),
+
+    ascending: $ => prec(21, seq("ascending ", $.expression)),
+    descending: $ => prec(21, seq("descending" , $.expression)),
 
     quantifier_expr: $ => prec(-10, seq(
       choice("and", "or", "min", "max", "sum", "allDiff"),

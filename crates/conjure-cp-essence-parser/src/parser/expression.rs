@@ -299,6 +299,14 @@ pub fn parse_expression(
             ),
             Some(constraint.range()),
         )),
+        "ascending" => Ok(Expression::Ascending(
+            Metadata::new(),
+            Moo::new(parse_subexpression(named_child!(constraint))?),
+        )),
+        "descending" => Ok(Expression::Descending(
+            Metadata::new(),
+            Moo::new(parse_subexpression(named_child!(constraint))?),
+        )),
         _ => Err(EssenceParseError::syntax_error(
             format!("{} is not a recognized expression kind", constraint.kind()),
             Some(constraint.range()),

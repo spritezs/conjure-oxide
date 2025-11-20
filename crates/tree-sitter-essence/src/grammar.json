@@ -505,6 +505,14 @@
         {
           "type": "SYMBOL",
           "name": "from_solution"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "ascending"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "descending"
         }
       ]
     },
@@ -821,6 +829,40 @@
           "value": ")"
         }
       ]
+    },
+    "ascending": {
+      "type": "PREC",
+      "value": 21,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "ascending"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "expression"
+          }
+        ]
+      }
+    },
+    "descending": {
+      "type": "PREC",
+      "value": 21,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "STRING",
+            "value": "descending"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "expression"
+          }
+        ]
+      }
     },
     "quantifier_expr": {
       "type": "PREC",

@@ -99,6 +99,11 @@ pub enum Expression {
     // Defines the incomparability function used for CDP+I
     IncomparabilityFunction(Metadata, Moo<Expression>),
 
+    // Defines the ordering of the levels of the incomp fct
+    Ascending(Metadata, Moo<Expression>),
+
+    Descending(Metadata, Moo<Expression>),
+
     #[polyquine_with(arm = (_, name) => {
         let ident = proc_macro2::Ident::new(name.as_str(), proc_macro2::Span::call_site());
         quote::quote! { #ident.clone().into() }
@@ -609,6 +614,8 @@ impl Expression {
             Expression::DominanceRelation(_, _) => Some(Domain::Bool),
             Expression::FromSolution(_, expr) => expr.domain_of(),
             Expression::IncomparabilityFunction(_, expr) => expr.domain_of(),
+            Expression::Ascending(_, expr) => expr.domain_of(),
+            Expression::Descending(_, expr) => expr.domain_of(),
             Expression::Metavar(_, _) => None,
             Expression::Comprehension(_, comprehension) => comprehension.domain_of(),
             Expression::UnsafeIndex(_, matrix, _) | Expression::SafeIndex(_, matrix, _) => {
@@ -1133,6 +1140,8 @@ impl Display for Expression {
             Expression::DominanceRelation(_, expr) => write!(f, "DominanceRelation({expr})"),
             Expression::FromSolution(_, expr) => write!(f, "FromSolution({expr})"),
             Expression::IncomparabilityFunction(_, expr) => write!(f, "IncomparabilityFunction({expr})"),
+            Expression::Ascending(_, expr) => write!(f, "Ascending({expr})"),
+            Expression::Descending(_, expr) => write!(f, "Descending({expr})"),
             Expression::Metavar(_, name) => write!(f, "&{name}"),
             Expression::Atomic(_, atom) => atom.fmt(f),
             Expression::Scope(_, submodel) => write!(f, "{{\n{submodel}\n}}"),
@@ -1351,6 +1360,8 @@ impl Typeable for Expression {
             Expression::DominanceRelation(_, _) => Some(ReturnType::Bool),
             Expression::FromSolution(_, expr) => expr.return_type(),
             Expression::IncomparabilityFunction(_, expr) => expr.return_type(),
+            Expression::Ascending(_, expr) => expr.return_type(),
+            Expression::Descending(_, expr) => expr.return_type(),
             Expression::Metavar(_, _) => None,
             Expression::Atomic(_, atom) => atom.return_type(),
             Expression::Scope(_, scope) => scope.return_type(),
