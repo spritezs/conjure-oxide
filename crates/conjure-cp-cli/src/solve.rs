@@ -309,7 +309,8 @@ fn run_solver(
                 writeln!(file, "{}", line)?;
             }
             let mut total_time: f64 = 0.0;
-            solutions = get_solutions_with_dominance(solver, model, dom_file_path, &global_args, &mut total_time)?;
+            let anal = parent_dir.join("analysis");
+            solutions = get_solutions_with_dominance(solver, model, dom_file_path, &global_args, &mut total_time, anal)?;
 
 
             match &cmd_args.output {
@@ -375,13 +376,12 @@ pub fn get_solutions_with_dominance(
     dom_file_path: PathBuf,
     global_args: &GlobalArgs,
     total_time: &mut f64,
+    anal: PathBuf,
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
     // all non-dominated solutions
     let mut results = Vec::new();
     let mut sols_to_constraints = HashMap::new();
     loop {
-
-        // println!("{}",model);
 
         // get the next solution
         let solutions = match solver {
@@ -395,6 +395,10 @@ pub fn get_solutions_with_dominance(
                 get_solutions_no_dominance(Smt::default(), model.clone(), 1, &global_args.save_solver_input_file, Some(total_time))?
             }
         };
+
+        let _all_solutions = get_solutions_no_dominance(Minion::default(), model.clone(), -1, &global_args.save_solver_input_file, None);
+        writeln!(OpenOptions::new().create(true).append(true).open(&anal)?, "{}", _all_solutions.expect("q").len())?;
+
         // no more solutions
         let Some(solution) = solutions.first() else {
             break;
