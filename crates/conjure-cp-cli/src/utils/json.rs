@@ -85,8 +85,7 @@ pub fn extract_matrix(data: &Literal) -> String {
     // Initialize the result string
 
     let mut result = String::new();
-    if let Literal::AbstractLiteral(lit) = data {
-
+    if let Literal::AbstractLiteral(lit) = data { 
         if let AbstractLiteral::Matrix(item, _) = &*lit {
             let mut rows = Vec::new();
             for row in item {
@@ -103,9 +102,11 @@ pub fn extract_matrix(data: &Literal) -> String {
                         rows.push(format!("[{}]", row_values.join(", ")));
                     }
                 }
+                if let Literal::Int(val) = row {
+                    rows.push(val.to_string());
+                }
             }result.push_str(&format!("[{}]", rows.join(", ")));
         } 
     }
-   
     result
 }
