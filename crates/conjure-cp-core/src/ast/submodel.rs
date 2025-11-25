@@ -170,12 +170,18 @@ impl SubModel {
 
     /// Removes a top-level constraint.
     pub fn remove_constraint(&mut self, constraint: Expression) {
-        self.constraints_mut().retain(|x| *x != constraint);
+        if let Some(pos) = self.constraints_mut().iter().position(|x| *x == constraint) {
+            self.constraints_mut().remove(pos);
+        }
     }
 
     /// Removes top-level constraints.
     pub fn remove_constraints(&mut self, constraints: Vec<Expression>) {
-        self.constraints_mut().retain(|x| !constraints.contains(x));
+        for constraint in constraints {
+            if let Some(pos) = self.constraints_mut().iter().position(|x| *x == constraint) {
+                self.constraints_mut().remove(pos);
+            }
+        }
     }
 
     /// Adds cnf clauses.
