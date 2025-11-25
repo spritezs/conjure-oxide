@@ -1,16 +1,12 @@
 //! conjure_oxide solve sub-command
 #![allow(clippy::unwrap_used)]
 use std::{
-    fs::{File, OpenOptions},
-    io::{BufRead, Write as _, self},
-    path::PathBuf,
-    process::exit,
-    sync::{Arc, RwLock},
+    fmt::Pointer, fs::{File, OpenOptions}, io::{self, BufRead, Write as _}, path::PathBuf, process::exit, sync::{Arc, RwLock}
 };
 use std::fs;
+use conjure_cp::ast::{Atom, DeclarationPtr, Expression, Metadata, Moo};
 use std::collections::BTreeMap;
 use conjure_cp::solver::adaptors::{Minion, Smt, Sat};
-use conjure_cp::ast::Expression;
 use conjure_cp::ast::{Literal, Name};
 use std::collections::HashMap;
 use anyhow::{anyhow, ensure};
@@ -381,41 +377,57 @@ pub fn get_solutions_with_dominance(
     let mut sols_to_constraints = HashMap::new();
     loop {
 
-        // println!("{}",model);
+        for level in 0..6 {
+            println!("level is {}",level);
+            let incomp_var = model.get_var(&Name::from("itemset_Occurrence")).unwrap();
+            // create level constraint
+            let level_constraint = crate_level_constraint_from_incomp_fct(&model, incomp_var, &level);
+            model.add_constraints(level_constraint.clone());            
+            println!("1");
+            // get the next solution
+            let solutions = match solver {
+                SolverFamily::Sat => {
+                    get_solutions_no_dominance(Sat::default(), model.clone(), 1, &global_args.save_solver_input_file, Some(total_time))?
+                }
+                SolverFamily::Minion => {
+                    get_solutions_no_dominance(Minion::default(), model.clone(), 1, &global_args.save_solver_input_file, Some(total_time))?
+                }
+                SolverFamily::Smt => {
+                    get_solutions_no_dominance(Smt::default(), model.clone(), 1, &global_args.save_solver_input_file, Some(total_time))?
+                }
+            };
+            // no more solutions
+            let Some(solution) = solutions.first() else {
+                break;
+            };
+            // add to results
+            results.extend(solutions.clone());
+            println!("2");
+            let mut new_constraints = Vec::new();
 
-        // get the next solution
-        let solutions = match solver {
-            SolverFamily::Sat => {
-                get_solutions_no_dominance(Sat::default(), model.clone(), 1, &global_args.save_solver_input_file, Some(total_time))?
+            for solution in &solutions{
+                    let blocking_constraints =
+                crate_blocking_constraint_from_solution(solution, dom_file_path.clone(), &global_args)
+                .ok_or_else(|| anyhow::anyhow!(
+                    "Failed to generate blocking constraints for solution: {:?}", 
+                    solution
+                ))?;
+                
+                new_constraints.extend(blocking_constraints);
             }
-            SolverFamily::Minion => {
-                get_solutions_no_dominance(Minion::default(), model.clone(), 1, &global_args.save_solver_input_file, Some(total_time))?
+            println!("3");
+            for solution in solutions {
+                sols_to_constraints.insert(solution.clone(), new_constraints.clone());
             }
-            SolverFamily::Smt => {
-                get_solutions_no_dominance(Smt::default(), model.clone(), 1, &global_args.save_solver_input_file, Some(total_time))?
-            }
-        };
-        // no more solutions
-        let Some(solution) = solutions.first() else {
-            break;
-        };
-        // add to results
-        results.extend(solutions.clone());
-
-        let blocking_constraints =
-            crate_blocking_constraint_from_solution(solution, dom_file_path.clone(), &global_args)
-            .ok_or_else(|| anyhow::anyhow!(
-                "Failed to generate blocking constraints for solution: {:?}", 
-                solution
-            ))?;
-
-        sols_to_constraints.insert(solution.clone(), blocking_constraints.clone());
-        
-        // create and apply new blocking constraints
-        model.add_constraints(blocking_constraints);
+            
+            // create and apply new blocking constraints
+            model.add_constraints(new_constraints);
+            model.remove_constraints(level_constraint);
+                        println!("4");
+        }
+        return Ok(results);
     }
 
-    Ok(results)
 }
 
 pub fn crate_blocking_constraint_from_solution(
@@ -475,5 +487,26 @@ fn generate_output_file_path(dom_file_path: &PathBuf) -> PathBuf {
     output_dir.join(new_file_name)
 }
 
-
+pub fn crate_level_constraint_from_incomp_fct(
+    model: &Model,
+    name: DeclarationPtr,
+    level: &i32
+) -> Vec<Expression> {
+    let new_level_blocking = Expression::Eq(Metadata::new(), Moo::new(Expression::Atomic(Metadata::new(), Atom::Reference(name))), Moo::new(Expression::Atomic(Metadata::new(), Atom::from(*level))));
+    println!("qwe");
+    let mut model_copy = model.clone();
+    model_copy.remove_constraints(model_copy.as_submodel().constraints().clone());
+    model_copy.add_constraint(new_level_blocking);
+ println!("qwe");
+    // rewrite model
+    let rule_sets = model.context.read().unwrap().rule_sets.clone();
+     println!("qwe");
+    let rewritten = rewrite_naive(&model_copy, &rule_sets, false, false);
+ println!("qwe");
+    rewritten
+        .expect("Should be able to rewrite the model")
+        .as_submodel()
+        .constraints()
+        .clone()
+}
 
