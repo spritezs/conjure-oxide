@@ -266,6 +266,7 @@ fn run_solver(
     let dom_file = "rel_dom.essence";
 
     let solutions;
+     let solutions_incomp;
     if let Some(parent_dir) = cmd_args.input_file.parent() {
 
         let dom_file_path = parent_dir.join(dom_file);
@@ -305,8 +306,9 @@ fn run_solver(
                 writeln!(file, "{}", line)?;
             }
             let mut total_time: f64 = 0.0;
-            solutions = get_solutions_with_dominance(solver, model, dom_file_path, &global_args, &mut total_time)?;
-
+            solutions = get_solutions_with_dominance(solver, model.clone(), dom_file_path.clone(), &global_args, &mut total_time)?;
+            let mut total_time_incomp: f64 = 0.0;
+            solutions_incomp = get_solutions_with_incomparability(solver, model, dom_file_path, &global_args, &mut total_time_incomp)?;
 
             match &cmd_args.output {
                 None => {
@@ -319,7 +321,10 @@ fn run_solver(
                         let new_full_path = parent_dir.join(new_file_name);
                         new_path = new_full_path;
                     }
-                    File::create(new_path)?.write_all(format!("Total time: {}\n", total_time).as_bytes())?; 
+                    File::create(&new_path)?.write_all(format!("Total time for dominance: {}\n", total_time).as_bytes())?; 
+                    File::create(&new_path)?.write_all(format!("Total time for incomparability: {}\n", total_time_incomp).as_bytes())?; 
+                    File::create(&new_path)?.write_all(format!("Number of solutions for dominance: {}\n", solutions.len()).as_bytes())?; 
+                    File::create(&new_path)?.write_all(format!("Number of solutions for incomparability: {}\n", solutions_incomp.len()).as_bytes())?; 
                 }
             };
 
@@ -357,10 +362,6 @@ fn run_solver(
             )
         }
     }
-
-
-
-
     Ok(())
 }
 
@@ -376,33 +377,77 @@ pub fn get_solutions_with_dominance(
     let mut results = Vec::new();
     let mut sols_to_constraints = HashMap::new();
     loop {
+        // get the next solution
+        let solutions = match solver {
+            SolverFamily::Sat => {
+                get_solutions_no_dominance(Sat::default(), model.clone(), 1, &global_args.save_solver_input_file, Some(total_time))?
+            }
+            SolverFamily::Minion => {
+                get_solutions_no_dominance(Minion::default(), model.clone(), 1, &global_args.save_solver_input_file, Some(total_time))?
+            }
+            SolverFamily::Smt => {
+                get_solutions_no_dominance(Smt::default(), model.clone(), 1, &global_args.save_solver_input_file, Some(total_time))?
+            }
+        };
+        // no more solutions
+        let Some(solution) = solutions.first() else {
+            break;
+        };
+        // add to results
+        results.extend(solutions.clone());
 
-        for level in 0..6 {
+        let blocking_constraints =
+            crate_blocking_constraint_from_solution(solution, dom_file_path.clone(), &global_args)
+            .ok_or_else(|| anyhow::anyhow!(
+                "Failed to generate blocking constraints for solution: {:?}", 
+                solution
+            ))?;
+
+        sols_to_constraints.insert(solution.clone(), blocking_constraints.clone());
+        
+        // create and apply new blocking constraints
+        model.add_constraints(blocking_constraints);
+    }
+
+    Ok(results)
+}
+
+
+pub fn get_solutions_with_incomparability(
+      solver: SolverFamily,
+    mut model: Model,
+    dom_file_path: PathBuf,
+    global_args: &GlobalArgs,
+    total_time: &mut f64,
+) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
+    // all non-dominated solutions
+    let mut results = Vec::new();
+    let mut sols_to_constraints = HashMap::new();
+    loop {
+        for level in (0..6).rev() {
             println!("level is {}",level);
-            let incomp_var = model.get_var(&Name::from("itemset_Occurrence")).unwrap();
+            let incomp_var = model.get_var(&Name::from("s")).unwrap();
+
             // create level constraint
             let level_constraint = crate_level_constraint_from_incomp_fct(&model, incomp_var, &level);
             model.add_constraints(level_constraint.clone());            
-            println!("1");
-            // get the next solution
+
+            // get every solutions for this level
             let solutions = match solver {
                 SolverFamily::Sat => {
-                    get_solutions_no_dominance(Sat::default(), model.clone(), 1, &global_args.save_solver_input_file, Some(total_time))?
+                    get_solutions_no_dominance(Sat::default(), model.clone(), -1, &global_args.save_solver_input_file, Some(total_time))?
                 }
                 SolverFamily::Minion => {
-                    get_solutions_no_dominance(Minion::default(), model.clone(), 1, &global_args.save_solver_input_file, Some(total_time))?
+                    get_solutions_no_dominance(Minion::default(), model.clone(), -1, &global_args.save_solver_input_file, Some(total_time))?
                 }
                 SolverFamily::Smt => {
-                    get_solutions_no_dominance(Smt::default(), model.clone(), 1, &global_args.save_solver_input_file, Some(total_time))?
+                    get_solutions_no_dominance(Smt::default(), model.clone(), -1, &global_args.save_solver_input_file, Some(total_time))?
                 }
             };
-            // no more solutions
-            let Some(solution) = solutions.first() else {
-                break;
-            };
+            
             // add to results
             results.extend(solutions.clone());
-            println!("2");
+
             let mut new_constraints = Vec::new();
 
             for solution in &solutions{
@@ -415,7 +460,6 @@ pub fn get_solutions_with_dominance(
                 
                 new_constraints.extend(blocking_constraints);
             }
-            println!("3");
             for solution in solutions {
                 sols_to_constraints.insert(solution.clone(), new_constraints.clone());
             }
@@ -423,7 +467,6 @@ pub fn get_solutions_with_dominance(
             // create and apply new blocking constraints
             model.add_constraints(new_constraints);
             model.remove_constraints(level_constraint);
-                        println!("4");
         }
         return Ok(results);
     }
@@ -493,16 +536,16 @@ pub fn crate_level_constraint_from_incomp_fct(
     level: &i32
 ) -> Vec<Expression> {
     let new_level_blocking = Expression::Eq(Metadata::new(), Moo::new(Expression::Atomic(Metadata::new(), Atom::Reference(name))), Moo::new(Expression::Atomic(Metadata::new(), Atom::from(*level))));
-    println!("qwe");
+
     let mut model_copy = model.clone();
     model_copy.remove_constraints(model_copy.as_submodel().constraints().clone());
     model_copy.add_constraint(new_level_blocking);
- println!("qwe");
+
     // rewrite model
     let rule_sets = model.context.read().unwrap().rule_sets.clone();
-     println!("qwe");
+
     let rewritten = rewrite_naive(&model_copy, &rule_sets, false, false);
- println!("qwe");
+
     rewritten
         .expect("Should be able to rewrite the model")
         .as_submodel()
