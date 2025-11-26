@@ -265,8 +265,8 @@ fn run_solver(
    
     let dom_file = "rel_dom.essence";
 
-    let solutions;
-     let solutions_incomp;
+    let solutions: Vec<BTreeMap<Name, Literal>>;
+    let solutions_incomp: Vec<BTreeMap<Name, Literal>>;
     if let Some(parent_dir) = cmd_args.input_file.parent() {
 
         let dom_file_path = parent_dir.join(dom_file);
@@ -317,14 +317,16 @@ fn run_solver(
                 Some(pth) => {
                     let mut new_path = pth.clone();
                     if let Some(parent_dir) = new_path.parent() {
-                        let new_file_name = "time.json";
+                        let new_file_name = "time.txt";
                         let new_full_path = parent_dir.join(new_file_name);
                         new_path = new_full_path;
                     }
-                    File::create(&new_path)?.write_all(format!("Total time for dominance: {}\n", total_time).as_bytes())?; 
-                    File::create(&new_path)?.write_all(format!("Total time for incomparability: {}\n", total_time_incomp).as_bytes())?; 
-                    File::create(&new_path)?.write_all(format!("Number of solutions for dominance: {}\n", solutions.len()).as_bytes())?; 
-                    File::create(&new_path)?.write_all(format!("Number of solutions for incomparability: {}\n", solutions_incomp.len()).as_bytes())?; 
+                    let mut file = File::create(new_path)?;
+                    file.write_all(format!("Total time for dominance: {}\n", total_time).as_bytes())?;
+                    file.write_all(format!("Total time for incomparability: {}\n", total_time_incomp).as_bytes())?;
+                    file.write_all(format!("Number of solutions for dominance: {}\n", solutions.len()).as_bytes())?;
+                    file.write_all(format!("Number of solutions for incomparability: {}\n", solutions_incomp.len()).as_bytes())?;
+ 
                 }
             };
 
@@ -424,7 +426,7 @@ pub fn get_solutions_with_incomparability(
     let mut results = Vec::new();
     let mut sols_to_constraints = HashMap::new();
     loop {
-        for level in (0..6).rev() {
+        for level in (0..6) {
             println!("level is {}",level);
             let incomp_var = model.get_var(&Name::from("s")).unwrap();
 
