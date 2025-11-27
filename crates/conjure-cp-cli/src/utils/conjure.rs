@@ -244,9 +244,15 @@ pub fn validate_solutions(
     solver: SolverFamily,
     solver_input_file: &Option<PathBuf>,
     results: Vec<BTreeMap<Name, Literal>>,
-    model: Model,
+    mut model: Model,
     sols_to_constraints: HashMap<BTreeMap<Name, Literal>,Vec<Expression>>,
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
+
+    // remove every other constraint from the model
+    model.remove_constraints(model.clone().get_constraints().to_vec());
+    for constraint in sols_to_constraints.iter() {
+        model.add_constraints(constraint.1.to_vec());
+    }
 
     // vector constaining non-dominated solutions
     let mut final_results = Vec::new();
