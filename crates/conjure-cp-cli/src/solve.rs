@@ -10,7 +10,9 @@ use std::{
 
 use anyhow::{anyhow, ensure};
 use clap::ValueHint;
-use conjure_cp::defaults::DEFAULT_RULE_SETS;
+use conjure_cp::{defaults::DEFAULT_RULE_SETS, solver::SolverAdaptor};
+use conjure_cp::solver::adaptors::Minion;
+use conjure_cp::solver::adaptors::Sat;
 use conjure_cp::parse::tree_sitter::parse_essence_file_native;
 use conjure_cp::{
     Model,
@@ -88,12 +90,16 @@ pub fn run_solve_command(global_args: GlobalArgs, solve_args: Args) -> anyhow::R
             };
         }
     } else {
-        run_solver(
-            global_args.solver,
-            &global_args,
-            &solve_args,
-            rewritten_model,
-        )?
+            match global_args.solver {
+                SolverFamily::Sat => {
+                    let adaptor = Sat::default();
+                    run_solver(adaptor, &global_args, &solve_args, rewritten_model)
+                }
+                SolverFamily::Minion => {
+                    let adaptor = Minion::default();
+                    run_solver(adaptor, &global_args, &solve_args, rewritten_model)
+        }
+        }?;
     }
 
     // still do postamble even if we didn't run the solver
@@ -241,7 +247,7 @@ pub(crate) fn rewrite(
 }
 
 fn run_solver(
-    solver: SolverFamily,
+    solver: impl SolverAdaptor + Clone,
     global_args: &GlobalArgs,
     cmd_args: &Args,
     model: Model,

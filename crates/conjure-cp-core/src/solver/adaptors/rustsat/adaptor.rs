@@ -249,3 +249,15 @@ impl SolverAdaptor for Sat {
         cnf.write_dimacs(writer, var_manager.n_used())
     }
 }
+
+impl Clone for Sat {
+    fn clone(&self) -> Self {
+        Sat {
+            __non_constructable: private::Internal,
+            solver_inst: Minisat::default(),
+            var_map: self.var_map.clone(),
+            model_inst: self.model_inst.clone(),
+            decision_refs: self.decision_refs.clone(),
+        }
+    }
+}

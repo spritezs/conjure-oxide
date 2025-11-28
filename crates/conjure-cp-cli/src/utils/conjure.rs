@@ -1,9 +1,7 @@
 use conjure_cp::ast::{DeclarationKind, DeclarationPtr, Literal, Name};
 use conjure_cp::bug;
 use conjure_cp::context::Context;
-use conjure_cp::solver::adaptors::Sat;
 use std::time::{Instant,Duration};
-use conjure_cp::solver::SolverFamily;
 use itertools::Itertools as _;
 use serde_json::{Map, Value as JsonValue};
 use std::collections::BTreeMap;
@@ -20,34 +18,26 @@ use conjure_cp::Model;
 use conjure_cp::ast::{Atom, Expression, Metadata, Moo};
 use conjure_cp::parse::tree_sitter::parse_essence_file;
 use conjure_cp::rule_engine::rewrite_naive;
-use conjure_cp::solver::adaptors::Minion;
 use conjure_cp::solver::{Solver, SolverAdaptor};
 use glob::glob;
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 pub fn get_solutions(
-    solver: SolverFamily,
+    adaptor: impl SolverAdaptor + Clone, 
     model: Model,
     num_sols: i32,
     solver_input_file: &Option<PathBuf>,
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
     if let Some(Expression::DominanceRelation(_, dom_rel)) = model.dominance.clone() {
-        get_solutions_with_dominance(solver, model, solver_input_file, dom_rel.into())
+        get_solutions_with_dominance(adaptor, model, solver_input_file, dom_rel.into())
     } else {
-        match solver {
-            SolverFamily::Sat => {
-                get_solutions_no_dominance(Sat::default(), model, num_sols, solver_input_file)
-            }
-            SolverFamily::Minion => {
-                get_solutions_no_dominance(Minion::default(), model, num_sols, solver_input_file)
-            }
-        }
+        get_solutions_no_dominance(adaptor, model, num_sols, solver_input_file)
     }
 }
 
 pub fn get_solutions_with_dominance(
-    solver: SolverFamily,
+    solver: impl SolverAdaptor + Clone, 
     model: Model,
     solver_input_file: &Option<PathBuf>,
     dominance_rel: Expression
@@ -64,7 +54,7 @@ pub fn get_solutions_with_dominance(
 }
 
 pub fn get_solutions_dominance_with_incomparability(
-    solver: SolverFamily,
+    solver: impl SolverAdaptor + Clone,
     mut model: Model,
     solver_input_file: &Option<PathBuf>,
     dominance_expression: Expression,
@@ -115,17 +105,12 @@ pub fn get_solutions_dominance_with_incomparability(
                 model.add_constraints(level_constraint.clone());
 
                 start = Instant::now();
+
                 // get every solution for that level
-                let solutions = match solver {
-                    SolverFamily::Sat => {
-                        get_solutions_no_dominance(Sat::default(), model.clone(), -1, solver_input_file)?
-                    }
-                    SolverFamily::Minion => {
-                        get_solutions_no_dominance(Minion::default(), model.clone(), -1, solver_input_file)?
-                    }
-                };
+                let solutions = get_solutions_no_dominance(solver.clone(), model.clone(), -1, solver_input_file)?;
                 solver_time+=start.elapsed();
                 // save sols in results
+
                 results.extend(solutions.clone());
                 
                 let mut new_constraints = Vec::new();
@@ -134,15 +119,10 @@ pub fn get_solutions_dominance_with_incomparability(
                 // create new blocking constraints
                 for solution in &solutions{
                     let blocking_constraints = crate_blocking_constraint_from_solution(&model, &solution, &dominance_expression);
+                    sols_to_constraints.insert(solution.clone(), blocking_constraints.clone());
                     new_constraints.extend(blocking_constraints);
                 }
                 solver_time+=start.elapsed();
-
-
-                // for each solution add ALL constraints for that level to the map. This will be used later for post-processing
-                for solution in solutions {
-                    sols_to_constraints.insert(solution.clone(), new_constraints.clone());
-                }
 
                 // add new blocking constraints
                 model.add_constraints(new_constraints);
@@ -186,7 +166,7 @@ pub fn crate_level_constraint_from_incomp_fct(
 }
 
 pub fn get_solutions_dominance_no_incomparability(
-    solver: SolverFamily,
+    solver: impl SolverAdaptor + Clone, 
     mut model: Model,
     solver_input_file: &Option<PathBuf>,
     dom_rel: &Expression,
@@ -203,14 +183,7 @@ pub fn get_solutions_dominance_no_incomparability(
         start = Instant::now();
 
         // get the next solution
-        let solutions = match solver {
-            SolverFamily::Sat => {
-                get_solutions_no_dominance(Sat::default(), model.clone(), 1, solver_input_file)?
-            }
-            SolverFamily::Minion => {
-                get_solutions_no_dominance(Minion::default(), model.clone(), 1, solver_input_file)?
-            }
-        };
+        let solutions = get_solutions_no_dominance(solver.clone(), model.clone(), 1, solver_input_file)?;
 
         solver_time+=start.elapsed();
 
@@ -241,7 +214,7 @@ pub fn get_solutions_dominance_no_incomparability(
 }
 
 pub fn validate_solutions(
-    solver: SolverFamily,
+    solver: impl SolverAdaptor + Clone,
     solver_input_file: &Option<PathBuf>,
     results: Vec<BTreeMap<Name, Literal>>,
     mut model: Model,
@@ -287,14 +260,7 @@ pub fn validate_solutions(
         }
 
         // check if the solution is still valid
-        let sols = match solver {
-            SolverFamily::Sat => {
-                get_solutions_no_dominance(Sat::default(), model_copy, -1, solver_input_file)?
-            }
-            SolverFamily::Minion => {
-                get_solutions_no_dominance(Minion::default(), model_copy, -1, solver_input_file)?
-            }
-        };
+        let sols = get_solutions_no_dominance(solver.clone(), model_copy, -1, solver_input_file)?;
 
         if !sols.is_empty() {
             final_results.push(sol.clone());
@@ -357,10 +323,7 @@ pub fn get_solutions_no_dominance(
     num_sols: i32,
     solver_input_file: &Option<PathBuf>,
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
-    let adaptor_name = solver_adaptor.get_name().unwrap_or("UNKNOWN".into());
     let solver = Solver::new(solver_adaptor);
-
-    // eprintln!("Building {adaptor_name} model...");
 
     // Create for later since we consume the model when loading it
     let symbols_rc = Rc::clone(model.as_submodel().symbols_ptr_unchecked());
@@ -375,8 +338,6 @@ pub fn get_solutions_no_dominance(
         let mut file = std::fs::File::create(solver_input_file)?;
         solver.write_solver_input_file(&mut file)?;
     }
-
-    // eprintln!("Running {adaptor_name}...");
 
     // Create two arcs, one to pass into the solver callback, one to get solutions out later
     let all_solutions_ref = Arc::new(Mutex::<Vec<BTreeMap<Name, Literal>>>::new(vec![]));

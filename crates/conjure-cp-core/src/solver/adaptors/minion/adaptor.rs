@@ -185,3 +185,12 @@ fn get_solver_stats() -> SolverStats {
         ..Default::default()
     }
 }
+
+impl Clone for Minion {
+    fn clone(&self) -> Self {
+        Minion {
+            __non_constructable: private::Internal,
+            model: self.model.clone(),
+        }
+    }
+}
