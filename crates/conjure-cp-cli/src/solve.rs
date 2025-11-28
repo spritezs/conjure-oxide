@@ -10,7 +10,7 @@ use std::{
 
 use anyhow::{anyhow, ensure};
 use clap::ValueHint;
-use conjure_cp::{defaults::DEFAULT_RULE_SETS, solver::SolverAdaptor};
+use conjure_cp::defaults::DEFAULT_RULE_SETS;
 use conjure_cp::solver::adaptors::Minion;
 use conjure_cp::solver::adaptors::Sat;
 use conjure_cp::parse::tree_sitter::parse_essence_file_native;
@@ -19,7 +19,7 @@ use conjure_cp::{
     ast::comprehension::USE_OPTIMISED_REWRITER_FOR_COMPREHENSIONS,
     context::Context,
     rule_engine::{resolve_rule_sets, rewrite_morph, rewrite_naive},
-    solver::{Solver, adaptors},
+    solver::{Solver, SolverAdaptor, adaptors},
 };
 use conjure_cp::{
     parse::conjure_json::model_from_json, rule_engine::get_rules, solver::SolverFamily,
@@ -90,15 +90,15 @@ pub fn run_solve_command(global_args: GlobalArgs, solve_args: Args) -> anyhow::R
             };
         }
     } else {
-            match global_args.solver {
-                SolverFamily::Sat => {
-                    let adaptor = Sat::default();
-                    run_solver(adaptor, &global_args, &solve_args, rewritten_model)
+        match global_args.solver {
+    SolverFamily::Sat => {
+            let adaptor = Sat::default();
+                run_solver(adaptor, &global_args, &solve_args, rewritten_model)
                 }
-                SolverFamily::Minion => {
-                    let adaptor = Minion::default();
-                    run_solver(adaptor, &global_args, &solve_args, rewritten_model)
-        }
+            SolverFamily::Minion => {
+                let adaptor = Minion::default();
+                run_solver(adaptor, &global_args, &solve_args, rewritten_model)
+    }
         }?;
     }
 
@@ -247,7 +247,7 @@ pub(crate) fn rewrite(
 }
 
 fn run_solver(
-    solver: impl SolverAdaptor + Clone,
+    adaptor: impl SolverAdaptor + Clone,
     global_args: &GlobalArgs,
     cmd_args: &Args,
     model: Model,
@@ -264,7 +264,7 @@ fn run_solver(
     };
 
     let solutions = get_solutions(
-        solver,
+        adaptor,
         model,
         cmd_args.number_of_solutions,
         &global_args.save_solver_input_file,
