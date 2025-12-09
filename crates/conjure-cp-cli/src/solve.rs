@@ -2,7 +2,7 @@
 #![allow(clippy::unwrap_used)]
 use std::{
     fs::{File, OpenOptions},
-    io::{BufRead, Write as _, self},
+    io::{self, BufRead, Read, Write as _},
     path::PathBuf,
     process::exit,
     sync::{Arc, RwLock},
@@ -13,6 +13,7 @@ use conjure_cp::solver::adaptors::{Minion, Smt, Sat};
 use conjure_cp::ast::Expression;
 use conjure_cp::ast::{Literal, Name};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use anyhow::{anyhow, ensure};
 use clap::ValueHint;
 use conjure_cp::defaults::DEFAULT_RULE_SETS;
@@ -277,7 +278,7 @@ fn run_solver(
             println!("Dom Rel file '{}' found in the same directory as input file!", dom_file);
 
             let file = File::open(&dom_file_path)?;
-            let reader = io::BufReader::new(file);
+            let mut reader = io::BufReader::new(file);
 
             let mut lines_to_write = Vec::new();
             let mut found_such_that = false;
@@ -285,14 +286,20 @@ fn run_solver(
             let file2 = File::open(cmd_args.input_file.clone())?;
             let reader2 = io::BufReader::new(file2);
 
+            let line_with_key_words =  reader.by_ref().lines().next().unwrap()?;
+            let key_words: HashSet<&str> = line_with_key_words
+                .split(',')
+                .map(|s| s.trim())
+                .collect();
 
             for line in reader2.lines() {
-                let line = line?; 
-                
-                if line.contains("such that") {
-                    break;
+                let line = line?;
+                if key_words.iter().any(|word| {
+                    line.contains(&format!("letting {}", word)) || line.contains(&format!("find {}", word))
+                }) {
+                    
+                    lines_to_write.push(line);
                 }
-                lines_to_write.push(line);
             }
 
             for line in reader.lines() {
