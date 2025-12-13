@@ -308,7 +308,7 @@ fn run_solver(
             let incomp_fct_path = parent_dir.join(incomp_file);
             let mut total_time: f64 = 0.0;
             if incomp_fct_path.exists() {
-                solutions = get_solutions_with_incomparability(solver, model, dom_file_path, &global_args, &mut total_time)?;
+                solutions = get_solutions_with_incomparability(solver, model, dom_file_path, &global_args, &mut total_time, incomp_fct_path)?;
             }
             else
             {
@@ -421,12 +421,36 @@ pub fn get_solutions_with_incomparability(
     dom_file_path: PathBuf,
     global_args: &GlobalArgs,
     total_time: &mut f64,
+    incomp_file_path: PathBuf,
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
     // all non-dominated solutions
     let mut results = Vec::new();
     let mut sols_to_constraints = HashMap::new();
+
+    let incomp_text = fs::read_to_string(&incomp_file_path)
+        .expect(&format!("Failed to read incomp file: {}", incomp_file_path.display()));
+
+   let start = incomp_text
+        .find('(')
+        .ok_or_else(|| anyhow::anyhow!("missing '(' in {}", incomp_text))?
+        + 1;
+
+    let end = incomp_text
+        .find(')')
+        .ok_or_else(|| anyhow::anyhow!("missing ')' in {}", incomp_text))?;
+
+    let incomp_var_name = &incomp_text[start..end];
+    let ordering = &incomp_text[..start - 1];
+
+    let incomp_var = model.get_var(&Name::from(incomp_var_name)).unwrap();
+    let levels = incomp_var.domain().ok_or_else(|| anyhow::anyhow!("Couldn't calculate levels"))?;
+    let mut level_values = levels.values_i32()?;
+
+    if ordering=="descending"{
+        level_values.reverse();
+    }
     loop {
-        for level in (0..6).rev() {
+        for level in level_values {
             println!("level is {}",level);
             let incomp_var = model.get_var(&Name::from("s")).unwrap();
 
