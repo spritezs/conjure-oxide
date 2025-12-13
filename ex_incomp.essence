@@ -9,5 +9,5 @@ dominanceRelation (
 )
 
 incomparabilityFunction (
-    descending (cost+carbon)
+    ascending (cost+carbon)
 )

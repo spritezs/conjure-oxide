@@ -30,7 +30,7 @@ pub fn get_solutions(
     solver_input_file: &Option<PathBuf>,
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
     if let Some(Expression::DominanceRelation(_, dom_rel)) = model.dominance.clone() {
-        get_solutions_with_dominance(adaptor, model, solver_input_file, dom_rel.into())
+        get_solutions_with_dominance(adaptor, model, dom_rel.into())
     } else {
         get_solutions_no_dominance(adaptor, model, num_sols, solver_input_file)
     }
@@ -39,28 +39,27 @@ pub fn get_solutions(
 pub fn get_solutions_with_dominance(
     solver: impl SolverAdaptor + Clone, 
     model: Model,
-    solver_input_file: &Option<PathBuf>,
     dominance_rel: Expression
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
 
     if let Some(Expression::IncomparabilityFunction(_, inner_expr)) = model.incomparability_fct.clone()  
     {
-        return get_solutions_dominance_with_incomparability(solver, model, solver_input_file, dominance_rel.clone(), (*inner_expr).clone());
+        return get_solutions_dominance_with_incomparability(solver, model, dominance_rel.clone(), (*inner_expr).clone());
     }
     else
     {
-        return get_solutions_dominance_no_incomparability(solver, model, solver_input_file, &dominance_rel);
+        return get_solutions_dominance_no_incomparability(solver, model, &dominance_rel);
     }
 }
 
 pub fn get_solutions_dominance_with_incomparability(
     solver: impl SolverAdaptor + Clone,
     mut model: Model,
-    solver_input_file: &Option<PathBuf>,
     dominance_expression: Expression,
     incomparability_fct: Expression
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
 
+    let original_constraints = model.get_constraints().clone();
     let mut results = Vec::new();
     let mut sols_to_constraints: HashMap<BTreeMap<Name, Literal>, Vec<Expression>> = HashMap::new();
 
@@ -107,7 +106,7 @@ pub fn get_solutions_dominance_with_incomparability(
                 start = Instant::now();
 
                 // get every solution for that level
-                let solutions = get_solutions_no_dominance(solver.clone(), model.clone(), -1, solver_input_file)?;
+                let solutions = get_solutions_no_dominance(solver.clone(), model.clone(), -1, &None)?;
                 solver_time+=start.elapsed();
                 // save sols in results
 
@@ -119,10 +118,13 @@ pub fn get_solutions_dominance_with_incomparability(
                 // create new blocking constraints
                 for solution in &solutions{
                     let blocking_constraints = crate_blocking_constraint_from_solution(&model, &solution, &dominance_expression);
-                    sols_to_constraints.insert(solution.clone(), blocking_constraints.clone());
                     new_constraints.extend(blocking_constraints);
                 }
-                solver_time+=start.elapsed();
+                rewriting_time+=start.elapsed();
+
+                for solution in &solutions{
+                    sols_to_constraints.insert(solution.clone(), new_constraints.clone());
+                }
 
                 // add new blocking constraints
                 model.add_constraints(new_constraints);
@@ -134,7 +136,7 @@ pub fn get_solutions_dominance_with_incomparability(
             println!("Total number of solver calls is: {}", level_values.len() + results.len());
             println!("Time spent rewriting the models: {:?}", rewriting_time);
             println!("Time spent solving the models: {:?}",solver_time);
-            Ok(validate_solutions(solver, solver_input_file, results, model, sols_to_constraints)?)
+            Ok(validate_solutions(solver, results, model, sols_to_constraints, original_constraints)?)
         }
         Err(_) => {
             return Err(anyhow::anyhow!("Domain is not an integer domain").into())
@@ -168,10 +170,10 @@ pub fn crate_level_constraint_from_incomp_fct(
 pub fn get_solutions_dominance_no_incomparability(
     solver: impl SolverAdaptor + Clone, 
     mut model: Model,
-    solver_input_file: &Option<PathBuf>,
     dom_rel: &Expression,
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
 
+    let original_constraints = model.get_constraints().clone();
     let mut rewriting_time = Duration::new(0,0);
     let mut solver_time= Duration::new(0,0);
     let mut start;
@@ -183,7 +185,7 @@ pub fn get_solutions_dominance_no_incomparability(
         start = Instant::now();
 
         // get the next solution
-        let solutions = get_solutions_no_dominance(solver.clone(), model.clone(), 1, solver_input_file)?;
+        let solutions = get_solutions_no_dominance(solver.clone(), model.clone(), 1, &None)?;
 
         solver_time+=start.elapsed();
 
@@ -210,22 +212,19 @@ pub fn get_solutions_dominance_no_incomparability(
     println!("Total number of solver calls is: {}", results.len()*2);
     println!("Time spent rewriting the models: {:?}", rewriting_time);
     println!("Time spent solving the models: {:?}",solver_time);
-    Ok(validate_solutions(solver, solver_input_file, results, model, sols_to_constraints)?)
+    Ok(validate_solutions(solver, results, model, sols_to_constraints, original_constraints)?)
 }
 
 pub fn validate_solutions(
     solver: impl SolverAdaptor + Clone,
-    solver_input_file: &Option<PathBuf>,
     results: Vec<BTreeMap<Name, Literal>>,
     mut model: Model,
     sols_to_constraints: HashMap<BTreeMap<Name, Literal>,Vec<Expression>>,
+    original_constrints: Vec<Expression>,
 ) -> Result<Vec<BTreeMap<Name, Literal>>, anyhow::Error> {
 
     // remove every other constraint from the model
-    model.remove_constraints(model.clone().get_constraints().to_vec());
-    for constraint in sols_to_constraints.iter() {
-        model.add_constraints(constraint.1.to_vec());
-    }
+    model.remove_constraints(original_constrints);
 
     // vector constaining non-dominated solutions
     let mut final_results = Vec::new();
@@ -260,7 +259,7 @@ pub fn validate_solutions(
         }
 
         // check if the solution is still valid
-        let sols = get_solutions_no_dominance(solver.clone(), model_copy, -1, solver_input_file)?;
+        let sols = get_solutions_no_dominance(solver.clone(), model_copy, -1, &None)?;
 
         if !sols.is_empty() {
             final_results.push(sol.clone());
