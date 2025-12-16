@@ -386,9 +386,10 @@ pub fn get_solutions_with_dominance(
     // all non-dominated solutions
     let mut results = Vec::new();
     let mut sols_to_constraints = HashMap::new();
+    let mut iter = 0;
     loop {
 
-        // println!("{}",model);
+        println!("{}",iter);
 
         // get the next solution
         let solutions = match solver {
@@ -420,6 +421,7 @@ pub fn get_solutions_with_dominance(
         
         // create and apply new blocking constraints
         model.add_constraints(blocking_constraints);
+        iter+=1;
     }
 
     Ok(results)

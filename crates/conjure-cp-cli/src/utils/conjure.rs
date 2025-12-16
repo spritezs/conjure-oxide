@@ -29,7 +29,7 @@ pub fn get_solutions_no_dominance(
     let adaptor_name = solver_adaptor.get_name().unwrap_or("UNKNOWN".into());
     let solver = Solver::new(solver_adaptor);
 
-    eprintln!("Building {adaptor_name} model...");
+    // eprintln!("Building {adaptor_name} model...");
 
     // Create for later since we consume the model when loading it
     let symbols_rc = Rc::clone(model.as_submodel().symbols_ptr_unchecked());
@@ -45,7 +45,7 @@ pub fn get_solutions_no_dominance(
         solver.write_solver_input_file(&mut file)?;
     }
 
-    eprintln!("Running {adaptor_name}...");
+    // eprintln!("Running {adaptor_name}...");
 
     // Create two arcs, one to pass into the solver callback, one to get solutions out later
     let all_solutions_ref = Arc::new(Mutex::<Vec<BTreeMap<Name, Literal>>>::new(vec![]));
