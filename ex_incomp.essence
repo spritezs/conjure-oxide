@@ -9,5 +9,9 @@ dominanceRelation (
 )
 
 incomparabilityFunction (
+<<<<<<< HEAD
     ascending (cost+quality)
+=======
+    ascending(cost+carbon)
+>>>>>>> f679285743ed1a32974268389e9e98f65e139590
 )
