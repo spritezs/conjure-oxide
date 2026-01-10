@@ -1,9 +1,9 @@
 find cost: int(1..15)
-find carbon: int(1..15)
-such that cost + carbon <= 15
-such that (cost + carbon) % 3 = 0
+find quality: int(1..15)
+such that cost + quality <= 15
+such that (cost + quality) % 3 = 0
 
 dominanceRelation (
-    (cost+carbon) >= (fromSolution(cost)+fromSolution(carbon)) /\
-    (cost != fromSolution(cost) \/ carbon != fromSolution(carbon))
+    (cost+quality) >= (fromSolution(cost)+fromSolution(quality)) /\
+    (cost != fromSolution(cost) \/ quality != fromSolution(quality))
 )
