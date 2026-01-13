@@ -11,8 +11,7 @@ use std::{
 use anyhow::{anyhow, ensure};
 use clap::ValueHint;
 use conjure_cp::defaults::DEFAULT_RULE_SETS;
-use conjure_cp::solver::adaptors::Minion;
-use conjure_cp::solver::adaptors::Sat;
+use conjure_cp::solver::adaptors::{Minion,Sat};
 use conjure_cp::parse::tree_sitter::parse_essence_file_native;
 use conjure_cp::{
     Model,
@@ -64,11 +63,9 @@ pub fn run_solve_command(global_args: GlobalArgs, solve_args: Args) -> anyhow::R
 
     let context = init_context(&global_args, input_file)?;
     let model = parse(&global_args, Arc::clone(&context))?;
-
     let rewritten_model = rewrite(model, &global_args, Arc::clone(&context))?;
 
     if solve_args.no_run_solver {
-        println!("{}", &rewritten_model);
 
         // TODO: we want to be able to do let solver = match family {....}, but something weird is
         // happening in the types..
@@ -94,11 +91,11 @@ pub fn run_solve_command(global_args: GlobalArgs, solve_args: Args) -> anyhow::R
     SolverFamily::Sat => {
             let adaptor = Sat::default();
                 run_solver(adaptor, &global_args, &solve_args, rewritten_model)
-                }
+            }
             SolverFamily::Minion => {
                 let adaptor = Minion::default();
                 run_solver(adaptor, &global_args, &solve_args, rewritten_model)
-    }
+            }
         }?;
     }
 
@@ -126,10 +123,9 @@ pub(crate) fn init_context(
     if global_args.no_use_expand_ac {
         extra_rule_sets.pop_if(|x| x == &"Better_AC_Comprehension_Expansion");
     }
-
     ensure!(
         target_family == SolverFamily::Minion || target_family == SolverFamily::Sat,
-        "Only the Minion and SAT solvers is currently supported!"
+        "Only the Minion and SAT solvers are currently supported!"
     );
 
     let rule_sets = match resolve_rule_sets(target_family, &extra_rule_sets) {

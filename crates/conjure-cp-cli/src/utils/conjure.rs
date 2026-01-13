@@ -61,8 +61,11 @@ pub fn get_solutions_dominance_with_incomparability(
 
     let original_constraints = model.get_constraints().clone();
     let mut results = Vec::new();
+
+    // Map linking each solution to its own blocking constraint
     let mut sols_to_constraints: HashMap<BTreeMap<Name, Literal>, Vec<Expression>> = HashMap::new();
 
+    // Get the ordering of the incomparability function
     let ordering;
     let inner_expr;
     match incomparability_fct {
@@ -108,14 +111,14 @@ pub fn get_solutions_dominance_with_incomparability(
                 // get every solution for that level
                 let solutions = get_solutions_no_dominance(solver.clone(), model.clone(), -1, &None)?;
                 solver_time+=start.elapsed();
-                // save sols in results
 
+                // save sols in results
                 results.extend(solutions.clone());
                 
                 let mut new_constraints = Vec::new();
-
-                start = Instant::now();
+                
                 // create new blocking constraints
+                start = Instant::now();
                 for solution in &solutions{
                     let blocking_constraints = crate_blocking_constraint_from_solution(&model, &solution, &dominance_expression);
                     new_constraints.extend(blocking_constraints);
@@ -150,11 +153,12 @@ pub fn crate_level_constraint_from_incomp_fct(
     expr: &Expression,
     level: &i32
 ) -> Vec<Expression> {
-    let new_level_blocking = Expression::Eq(Metadata::new(), Moo::new(expr.clone()), Moo::new(Expression::Atomic(Metadata::new(), Atom::from(*level))));
+    let new_level_blocking_constraint = Expression::Eq(Metadata::new(), Moo::new(expr.clone()), Moo::new(Expression::Atomic(Metadata::new(), Atom::from(*level))));
     
+    // create model for the rewriting of the new level constraint
     let mut model_copy = model.clone();
     model_copy.remove_constraints(model_copy.as_submodel().constraints().clone());
-    model_copy.add_constraint(new_level_blocking);
+    model_copy.add_constraint(new_level_blocking_constraint);
 
     // rewrite model
     let rule_sets = model.context.read().unwrap().rule_sets.clone();

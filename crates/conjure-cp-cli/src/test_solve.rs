@@ -7,9 +7,7 @@ use conjure_cp_cli::utils::conjure::{
     get_solutions, get_solutions_from_conjure, solutions_to_json,
 };
 use conjure_cp_cli::utils::testing::normalize_solutions_for_comparison;
-use conjure_cp::solver::adaptors::Minion;
-use conjure_cp::solver::adaptors::Sat;
-use conjure_cp::solver::SolverFamily;
+use conjure_cp::solver::{SolverFamily, adaptors::*};
 use crate::cli::GlobalArgs;
 use crate::solve;
 
