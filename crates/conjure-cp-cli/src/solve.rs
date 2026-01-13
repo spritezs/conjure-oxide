@@ -278,42 +278,47 @@ fn run_solver(
             println!("Dom Rel file '{}' found in the same directory as input file!", dom_file);
 
             // 'instantiate' the dominance relation file with the variable declarations
-            let file = File::open(&dom_file_path)?;
-            let mut reader = io::BufReader::new(file);
+            let dominance_file = File::open(&dom_file_path)?;
+            let mut reader = io::BufReader::new(dominance_file);
 
-            let mut lines_to_write = Vec::new();
+            let mut lines_to_write_to_dominance_file = Vec::new();
             let mut found_such_that = false;
 
-            let file2 = File::open(cmd_args.input_file.clone())?;
-            let reader2 = io::BufReader::new(file2);
+            // we read the variable declarations from the model's file
+            let model_file = File::open(cmd_args.input_file.clone())?;
+            let reader2 = io::BufReader::new(model_file);
 
+            // first line contains the names of the variables we need to instantiate
             let line_with_key_words =  reader.by_ref().lines().next().unwrap()?;
             let key_words: HashSet<&str> = line_with_key_words
                 .split(',')
                 .map(|s| s.trim())
                 .collect();
 
+            // collect the variable declarations
             for line in reader2.lines() {
                 let line = line?;
                 if key_words.iter().any(|word| {
                     line.contains(&format!("letting {}", word)) || line.contains(&format!("find {}", word))
                 }) {
                     
-                    lines_to_write.push(line);
+                    lines_to_write_to_dominance_file.push(line);
                 }
             }
 
+            // add the constraints from the dominance relation file
             for line in reader.lines() {
                 let line = line?; 
                 
                 if found_such_that || line.contains("such that") {
                     found_such_that = true;
-                    lines_to_write.push(line);
+                    lines_to_write_to_dominance_file.push(line);
                 }
             }
 
+            // write back to the dominance relation file
             let mut file = OpenOptions::new().write(true).truncate(true).open(&dom_file_path)?;
-            for line in lines_to_write {
+            for line in lines_to_write_to_dominance_file {
                 writeln!(file, "{}", line)?;
             }
 
@@ -321,7 +326,7 @@ fn run_solver(
             let mut total_time: f64 = 0.0;
             solutions = get_solutions_with_dominance(solver, model, dom_file_path, &global_args, &mut total_time)?;
 
-
+            // write the total solver time to a separate file
             match &cmd_args.output {
                 None => {
                     return Err(anyhow::anyhow!("Output path is None").context("Expected an output file path"));
