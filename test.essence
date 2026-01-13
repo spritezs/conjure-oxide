@@ -1,7 +1,0 @@
-find a: matrix indexed by [int(1..5),int(1..1)] of int(0..1)
-
-such that 
-
-a = [[1],[1],[1],[1],[1]]
-
-$and([a[i,j]=[[1],[1],[1],[1],[1]][i,j] | i : int(1..5), j : int(1..1)])

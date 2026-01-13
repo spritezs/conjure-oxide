@@ -82,8 +82,6 @@ pub fn sort_json_object(value: &Value, sort_arrays: bool) -> Value {
 use conjure_cp::ast::{AbstractLiteral, Literal};
 
 pub fn extract_matrix(data: &Literal) -> String {
-    // Initialize the result string
-
     let mut result = String::new();
     if let Literal::AbstractLiteral(lit) = data { 
         if let AbstractLiteral::Matrix(item, _) = &*lit {

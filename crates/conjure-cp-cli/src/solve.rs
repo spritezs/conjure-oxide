@@ -267,7 +267,7 @@ fn run_solver(
         ),
     };
 
-   
+    // file where we expect to find the dominance relation
     let dom_file = "rel_dom.essence";
 
     let solutions;
@@ -277,6 +277,7 @@ fn run_solver(
         if dom_file_path.exists() {
             println!("Dom Rel file '{}' found in the same directory as input file!", dom_file);
 
+            // 'instantiate' the dominance relation file with the variable declarations
             let file = File::open(&dom_file_path)?;
             let mut reader = io::BufReader::new(file);
 
@@ -315,6 +316,8 @@ fn run_solver(
             for line in lines_to_write {
                 writeln!(file, "{}", line)?;
             }
+
+            // solve the model using CDP
             let mut total_time: f64 = 0.0;
             solutions = get_solutions_with_dominance(solver, model, dom_file_path, &global_args, &mut total_time)?;
 
@@ -368,10 +371,6 @@ fn run_solver(
             )
         }
     }
-
-
-
-
     Ok(())
 }
 
