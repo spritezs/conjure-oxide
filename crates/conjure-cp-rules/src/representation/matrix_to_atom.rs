@@ -166,7 +166,6 @@ impl Representation for MatrixToAtom {
         &self,
         symtab: &SymbolTable,
     ) -> Result<BTreeMap<Name, Expression>, ApplicationError> {
-
         Ok(self
             .names()
             .map(|name| {

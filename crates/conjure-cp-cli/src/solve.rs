@@ -262,7 +262,7 @@ fn run_solver(
         ),
     };
 
-   
+    // file names for the dominance relation and incomparability function    
     let dom_file = "rel_dom.essence";
     let incomp_file = "incomp_fct.essence";
 
@@ -273,17 +273,17 @@ fn run_solver(
         if dom_file_path.exists() {
             println!("Dom Rel file '{}' found in the same directory as input file!", dom_file);
 
-            let file = File::open(&dom_file_path)?;
-            let reader = io::BufReader::new(file);
+            let dom_file = File::open(&dom_file_path)?;
+            let dom_reader = io::BufReader::new(dom_file);
 
             let mut lines_to_write = Vec::new();
             let mut found_such_that = false;
 
-            let file2 = File::open(cmd_args.input_file.clone())?;
-            let reader2 = io::BufReader::new(file2);
+            let model_file = File::open(cmd_args.input_file.clone())?;
+            let model_reader = io::BufReader::new(model_file);
 
-
-            for line in reader2.lines() {
+            // add the variable declarations to the dominance relation
+            for line in model_reader.lines() {
                 let line = line?; 
                 
                 if line.contains("such that") {
@@ -292,7 +292,8 @@ fn run_solver(
                 lines_to_write.push(line);
             }
 
-            for line in reader.lines() {
+            // add the constraints from the dominance relation
+            for line in dom_reader.lines() {
                 let line = line?; 
                 
                 if found_such_that || line.contains("such that") {
@@ -301,10 +302,13 @@ fn run_solver(
                 }
             }
 
+            // write back to the dominance relation file
             let mut file = OpenOptions::new().write(true).truncate(true).open(&dom_file_path)?;
             for line in lines_to_write {
                 writeln!(file, "{}", line)?;
             }
+
+            // check for the presence of the incomparability function
             let incomp_fct_path = parent_dir.join(incomp_file);
             let mut total_time: f64 = 0.0;
             if incomp_fct_path.exists() {
@@ -430,7 +434,8 @@ pub fn get_solutions_with_incomparability(
     let incomp_text = fs::read_to_string(&incomp_file_path)
         .expect(&format!("Failed to read incomp file: {}", incomp_file_path.display()));
 
-   let start = incomp_text
+    // extract the ordering and name of the variable inside the incomparability function 
+    let start = incomp_text
         .find('(')
         .ok_or_else(|| anyhow::anyhow!("missing '(' in {}", incomp_text))?
         + 1;
@@ -442,6 +447,7 @@ pub fn get_solutions_with_incomparability(
     let incomp_var_name = &incomp_text[start..end];
     let ordering = &incomp_text[..start - 1];
 
+    // get the variable from the symbol table, and its domain
     let incomp_var = model.get_var(&Name::from(incomp_var_name)).unwrap();
     let levels = incomp_var.domain().ok_or_else(|| anyhow::anyhow!("Couldn't calculate levels"))?;
     let mut level_values = levels.values_i32()?;
@@ -504,12 +510,9 @@ pub fn crate_blocking_constraint_from_solution(
     dom_file_path: PathBuf,
     global_args: &GlobalArgs,
 ) -> Option<Vec<Expression>> {
-
-
     // read domrel model
     let file_content = fs::read_to_string(&dom_file_path)
         .expect(&format!("Failed to read dom file: {}", dom_file_path.display()));
-
     
     let mut modified_content = file_content;
 

@@ -37,7 +37,6 @@ pub(super) fn run_partial_evaluator(expr: &Expr, symtab: &SymbolTable) -> Applic
         Expr::UnsafeIndex(_, _, _) => Err(RuleNotApplicable),
         Expr::UnsafeSlice(_, _, _) => Err(RuleNotApplicable),
         Expr::SafeIndex(_, subject, indices) => {
-
             // partially evaluate matrix literals indexed by a constant.
 
             // subject must be a matrix literal

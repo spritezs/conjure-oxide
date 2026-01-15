@@ -18,7 +18,6 @@ use glob::glob;
 
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
-
 pub fn get_solutions_no_dominance(
     solver_adaptor: impl SolverAdaptor,
     model: Model,
